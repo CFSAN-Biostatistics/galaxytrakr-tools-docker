@@ -54,6 +54,7 @@ ADD https://github.com/marbl/Mash/releases/download/v${MASH_VER}/mash-Linux64-v$
 ADD https://github.com/Cibiv/IQ-TREE/releases/download/v${IQTREE_VER}/iqtree-${IQTREE_VER}-Linux.tar.gz .
 
 # ---- Build/install tools into /usr/local ----
+    
 # bedtools
 RUN tar -xzf v${BEDTOOLS_VER}.tar.gz && rm v${BEDTOOLS_VER}.tar.gz && \
     cd bedtools2-${BEDTOOLS_VER} && make -j && make install
