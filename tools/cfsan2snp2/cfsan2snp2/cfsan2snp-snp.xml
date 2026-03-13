@@ -1,0 +1,183 @@
+<tool id="cfsan2snp-snp" name="CSP2 (SNP Pipeline Mode)" version="0.9.7.7+gt_0.7">
+        <description>Run SNP Pipeline analysis on isolates using one or more references.</description>
+        <requirements>
+                <container type="docker">quay.io/galaxytrakr/csp2:0.9.7.7-galaxy_0.1</container>
+        </requirements>
+        <version_command>nextflow -version</version_command>
+        <command detect_errors="exit_code"><![CDATA[
+       	  mkdir -p queries references .nextflow
+	  && sed "s/@CORES@/\${GALAXY_SLOTS:-1}/" $__tool_directory__/nextflow.tmpl > nextflow_gal25.config
+
+	  #set readext=""
+	  #for $reads in $coll
+            && ln -sf '${reads}' 'queries/${reads.element_identifier.replace(": ", ".").replace(" ", "_")}.fasta'
+          #end for
+          #for $ref in $source.reference
+            #set renamedref=$ref.element_identifier.replace(": ", ".").replace(" ", "_").replace("(","").replace(")","")
+            && ln -sf '$ref' 'references/${renamedref}.fasta'
+          #end for
+
+          && echo "*** Files in queries directory: ***"
+          && ls -lah queries/
+          && nextflow run /opt/csp2/CSP2.nf -c nextflow_gal25.config 
+            --runmode snp 
+            --fasta queries
+            --ref_fasta 'references'
+            --min_cov $opt.min_cov 
+            --min_iden $opt.min_iden 
+            --min_len $opt.min_len 
+            --ref_edge $opt.ref_edge 
+            --query_edge $opt.query_edge 
+            --dwin $opt.dwin 
+            --wsnps $opt.wsnps 
+            --out CSP2_SNP_Output
+            --quiet
+          && echo "*** Files in output directory: ***"
+          && ls -lahR CSP2_SNP_Output
+          && tail -n +2 CSP2_SNP_Output/Isolate_Data.tsv > ${isolate_data}
+          && tail -n +2 CSP2_SNP_Output/Raw_MUMmer_Summary.tsv > ${raw_mummer}
+          && tail -n +2 CSP2_SNP_Output/SNP_Analysis/${renamedref}/snp_distance_pairwise_preserved.tsv > ${snp_pairwise}
+          && cat CSP2_SNP_Output/SNP_Analysis/${renamedref}/snplist_preserved.txt > ${snp_list}
+          && cat CSP2_SNP_Output/SNP_Analysis/${renamedref}/snpma_preserved.fasta > ${snp_matrix}
+          && echo "*** Nextflow log follows: ***"
+          && cat .nextflow.log
+          ]]>
+        </command>
+        <inputs>
+                <conditional name="source">
+                        <param name="source_select" type="select" label="Use a curated GalaxyTrakr reference or a reference from your history">
+                                <option value="curated">Use a GalaxyTrakr reference</option>
+                                <option value="history">Use a reference from your history</option>
+                        </param>
+                        <when value="curated">
+                                <param name="reference" type="select" label="Select reference fasta" multiple="true" min="1" >
+                                        <options from_data_table="all_fasta">
+                                                <filter type="sort_by" column="2"/>
+                                                <validator type="no_options" message="No assemblies are available for the selected input dataset"/>
+                                        </options>
+                                </param>
+                        </when>
+                        <when value="history">
+                                <param type="data" name="reference" format="fasta" label="Select reference FASTAs" multiple="true" min="1" />
+                        </when>
+                </conditional>
+                <!-- <conditional name="query">
+                        <param name="query_select" type="select" label="Screen a list of paired-reads or a list of assemblies">
+                                <option value="reads">Screen a list of paired reads</option>
+                                <option value="assemblies">Screen a list of assemblies</option>
+                        </param>
+                        <when value="reads">
+                                <param label="Paired reads" name="coll" type="data_collection" format="fastq,fastqsanger,fastq.gz,fastqsanger.gz,fastq.bz2,fastqsanger.bz2" collection_type="list:paired" />
+                        </when>
+                        <when value="assemblies"> -->
+                                <param label="Assemblies" name="coll" type="data_collection" format="fasta" collection_type="list" />
+                        <!-- </when> -->
+                <!-- </conditional> -->
+                <section name="opt" title="Advanced options...">
+                        <param name="min_cov" type="float" value="85" label="Minimum reference genome coverage to proceed with distance estimation" optional="true" />
+                        <param name="min_iden" type="float" value="99" label="Minimum alignment percent identity to detect SNPs" optional="true" />
+                        <param name="min_len" type="integer" value="500" label="Minimum alignment length to detect SNPs" optional="true" />
+                        <param name="ref_edge" type="integer" value="150" label="Prune SNPs within this many bases of reference contig edge" optional="true" />
+                        <param name="query_edge" type="integer" value="150" label="Prune SNPs within this many bases of query contig edge" optional="true" />
+                        <param name="dwin" type="text" value="1000,125,15" label="Comma-separated set of window sizes for SNP density filtration (Set to 0 to disable density filtration)" optional="true" />
+                        <param name="wsnps" type="text" value="3,2,1" label="Comma-separated list of maximum SNP counts per density window" optional="true" />
+                </section>
+        </inputs>
+        <outputs>
+                <!-- <data name="nextflow_log" format="txt" label="Nextflow Log" from_work_dir="Nextflow_Log.txt" /> -->
+                <data name="isolate_data" format="tabular" label="Isolate Data">
+                        <actions>
+                                <action name="column_names" type="metadata" default="Isolate_ID,Isolate_Type,Assembly_Path,Contig_Count,Assembly_Bases,N50,N90,L50,L90,SHA256" />
+                        </actions>
+                </data>
+                <data name="raw_mummer" format="tabular" label="Raw MUMmer Output">
+                        <actions>
+                                <action name="column_names" type="metadata" default="SNPDiffs_File,Query_ID,Query_Assembly,Query_Contig_Count,Query_Assembly_Bases,Query_N50,Query_N90,Query_L50,Query_L90,Query_SHA256,Reference_ID,Reference_Assembly,Reference_Contig_Count,Reference_Assembly_Bases,Reference_N50,Reference_N90,Reference_L50,Reference_L90,Reference_SHA256,SNPs,Reference_Percent_Aligned,Query_Percent_Aligned,Median_Percent_Identity,Median_Alignment_Length,Kmer_Similarity,Shared_Kmers,Reference_Unique_Kmers,Query_Unique_Kmers,Reference_Breakpoints,Query_Breakpoints,Reference_Relocations,Query_Relocations,Reference_Translocations,Query_Translocations,Reference_Inversions,Query_Inversions,Reference_Insertions,Query_Insertions,Reference_Tandem,Query_Tandem,Indels,Invalid,gSNPs,gIndels" />
+                        </actions>
+                </data>
+                <!-- <data name="csp2_zip" format="zip" label="Zipped Output" from_work_dir="CSP2_Output.zip" /> -->
+                <!-- <discover_datasets pattern="(?P&lt;name&gt;.+)/CSP2_SNP_Pipeline\.log" format="txt" visible="true" directory="./CSP2_SNP_Output/SNP_Analysis" /> -->
+                <!-- <discover_datasets pattern="(?P&lt;name&gt;.+)/Reference_Screening\.tsv" format="tabular" visible="true" directory="./CSP2_SNP_Output/SNP_Analysis" />
+                <discover_datasets pattern="(?P&lt;name&gt;.+)/snp_distance_matrix_preserved\.tsv" format="tabular" visible="true" directory="./CSP2_SNP_Output/SNP_Analysis" />
+                <discover_datasets pattern="(?P&lt;name&gt;.+)/snp_distance_pairwise_preserved\.tsv" format="tabular" visible="true" directory="./CSP2_SNP_Output/SNP_Analysis" />
+                <discover_datasets pattern="(?P&lt;name&gt;.+)/snpma_preserved\.fasta" format="fasta" visible="true" directory="./CSP2_SNP_Output/SNP_Analysis" /> -->
+                <data name="snp_pairwise" format="tabular" label="Preserved Pairwise SNP Distances">
+                        <actions>
+                                <action name="column_names" type="metadata" default="Query_1,Query_2,SNP_Distance,SNPs_Cocalled" />
+                        </actions>
+                </data>
+                <data name="snp_list" format="txt" label="Preserved SNP List" />
+                <data name="snp_matrix" format="fasta" label="Preserved SNP Matrix" />
+                <discover_datasets pattern="(?P&lt;name&gt;.+)/snp_distance_matrix\.tsv" format="tabular" visible="false" directory="./CSP2_SNP_Output/SNP_Analysis" />
+                <discover_datasets pattern="(?P&lt;name&gt;.+)/snp_distance_pairwise\.tsv" format="tabular" visible="false" directory="./CSP2_SNP_Output/SNP_Analysis" />
+                <discover_datasets pattern="(?P&lt;name&gt;.+)/snpma\.fasta" format="fasta" visible="false" directory="./CSP2_SNP_Output/SNP_Analysis" />
+        </outputs>
+        <tests>
+                <test>
+                        <param name="source_select" value="history" />
+                        <param name="reference" value="assemblies/Sample_A.fasta" />
+                        <!-- <param name="query_select" value="assemblies" /> -->
+                        <param name="coll">
+                                <collection type="list">
+                                        <!-- <element name="Sample_A" value="assemblies/Sample_A.fasta" /> -->
+                                        <element name="Sample_B" value="assemblies/Sample_B.fasta" />
+                                        <element name="Sample_C" value="assemblies/Sample_C.fasta" />
+                                        <element name="Sample_D" value="assemblies/Sample_D.fasta" />
+                                        <element name="Sample_E" value="assemblies/Sample_E.fasta" />
+                                        <element name="Sample_F" value="assemblies/Sample_F.fasta" />
+                                        <element name="Sample_G" value="assemblies/Sample_G.fasta" />
+                                        <element name="Sample_H" value="assemblies/Sample_H.fasta" />
+                                        <element name="Sample_I" value="assemblies/Sample_I.fasta" />
+                                        <element name="Sample_J" value="assemblies/Sample_J.fasta" />
+                                        <element name="Sample_K" value="assemblies/Sample_K.fasta" />
+                                        <element name="Sample_L" value="assemblies/Sample_L.fasta" />
+                                        <element name="Sample_M" value="assemblies/Sample_M.fasta" />
+                                        <element name="Sample_N" value="assemblies/Sample_N.fasta" />
+                                        <element name="Sample_O" value="assemblies/Sample_O.fasta" />
+                                </collection>
+                        </param>
+
+                        <output name="isolate_data" value="Isolate_Data.tsv" />
+                </test>
+                <test>
+                        <!-- Test that spaces and parens are handled -->
+                        <param name="source_select" value="history" />
+                        <param name="reference" value="assemblies/Sample (A).fasta" />
+                        <!-- <param name="query_select" value="assemblies" /> -->
+                        <param name="coll">
+                                <collection type="list">
+                                        <!-- <element name="Sample_A" value="assemblies/Sample_A.fasta" /> -->
+                                        <element name="Sample_B" value="assemblies/Sample_B.fasta" />
+                                        <element name="Sample_C" value="assemblies/Sample_C.fasta" />
+                                        <element name="Sample_D" value="assemblies/Sample_D.fasta" />
+                                </collection>
+                        </param>
+                        <output name="isolate_data" value="Isolate_Data.tsv" compare="diff" lines_diff="17" />
+                </test>
+                <!-- <test>
+                        <param name="source_select" value="history" />
+                        <param name="reference" value="assemblies/Sample_A.fasta" ftype="fasta" />
+                        <param name="query_select" value="reads" />
+                        <param name="coll">
+                                <collection type="list:paired">
+                                        <element name="Sample_A">
+                                                <collection type="paired">
+                                                        <element name="forward" value="reads/Week_42_Reads_1.fq.gz" ftype="fastqsanger.gz" />
+                                                        <element name="reverse" value="reads/Week_42_Reads_2.fq.gz" ftype="fastqsanger.gz" />
+                                                </collection>
+                                        </element>
+                                </collection>
+                        </param>
+                        <output name="screening_results" value="Screening_Results.tsv" />
+                        <output name="isolate_data" value="Isolate_Data.tsv" />
+                </test> -->
+        </tests>
+        <help>
+        This tool takes query assemblies and reference assemblies and calculates the pairwise distance between each query/reference combination. If no reference is provided, all queries are compared to all other queries.
+        </help>
+        <citations>
+                <citation type="doi">10.XXXX/placeholder.doi</citation>
+                <citation type="bibtex">@article{example2024,title={CFSAN SNP Pipeline 2 (CSP2): a pipeline for fast and accurate SNP distance estimation from bacterial genome assemblies.},author={Doe, John and Smith, Jane},journal={Submitted},year={2024}}
+                </citation>
+        </citations>
+</tool>

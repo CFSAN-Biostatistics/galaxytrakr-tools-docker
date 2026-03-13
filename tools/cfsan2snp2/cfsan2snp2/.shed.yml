@@ -1,0 +1,9 @@
+name: cfsan2snp2
+owner: galaxytrakr
+description: CSP2 is a tool for identifying single nucleotide polymorphisms (SNPs) in bacterial genomes.
+long_description: |-
+  CSP2 is a tool for identifying single nucleotide polymorphisms (SNPs) in bacterial genomes.
+homepage_url: https://github.com/CFSAN-Biostatistics/CSP2
+type: unrestricted
+categories:
+  - "Test"

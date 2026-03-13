@@ -1,0 +1,128 @@
+/*
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+    CSP2 Nextflow config file (for Dev25)
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+*/
+
+profiles {
+    standard {
+        process.executor = 'local'
+        params.cores = @CORES@
+        params.python_module  = ""
+        params.mummer_module  = ""
+        params.skesa_module   = ""
+        params.bedtools_module= ""
+        params.mash_module    = ""
+        params.bbtools_module = ""
+    }
+}
+
+process {
+    cpus = @CORES@ 
+
+    withLabel: 'mummerMem' {
+        label  = 'mummerMem'
+        cpus   = 1
+        memory = '4 GB'
+    }
+    withLabel: 'skesaMem' {
+        label  = 'skesaMem'
+        memory = '12 GB'
+    }
+}
+
+
+// Global default params
+params {
+
+    // Setting output directory 
+
+    // Set name for output folder/file prefixes
+    out = "CSP2_${new java.util.Date().getTime()}"
+
+    // Set output parent directory [Default: CWD; Set this to have all output go to the same parent folder, with unique IDs set by --out]
+    outroot = ""
+
+    // CSP2 can run in the following run-modes:
+
+    // assemble: Assemble read data (--reads/--ref_reads) into FASTA via SKESA (ignores --fasta/--ref_fasta/--snpdiffs)
+    // align: Given query data (--reads/--fasta) and reference data (--ref_reads/--ref_fasta), run MUMmer alignment analysis for each query/ref combination (ignores --snpdiffs)
+    // screen: Given query data (--reads/--fasta) and reference data (--ref_reads/--ref_fasta) and/or MUMmer output (.snpdiffs), create a report for raw SNP distances between each query and reference assembly
+    // snp: Given query data (--reads/--fasta) and reference data (--ref_reads/--ref_fasta) and/or MUMmer output (.snpdiffs), generate alignments and pairwise distances for all queries based on each reference dataset
+    
+    runmode = ""
+
+    // Location for isolate sequence data
+    reads = ""
+    fasta = ""
+
+    // Location for reference sequence data
+    ref_reads = ""
+    ref_fasta = ""
+
+    // IDs for reference sequences (Comma-separated list)
+    ref_id = ""
+
+    // Location for snpdiffs files
+    snpdiffs = ""
+    
+    // Read read_info
+    readext = "fastq.gz"
+    forward = "_1.fastq.gz"
+    reverse = "_2.fastq.gz"
+
+    ref_readext = "fastq.gz"
+    ref_forward = "_1.fastq.gz"
+    ref_reverse = "_2.fastq.gz"
+
+    // Analytical variables
+
+    // Only consider queries if the reference genome is covered by at least <min_cov>% [Default: 85]
+    min_cov = 85
+
+    // Only consider SNPs from contig alignments longer than <min_len> bp [Default: 500]
+    min_len = 500
+
+    // Only consider SNPs from contig alignments with <min_iden>% identity [Default: 99]
+    min_iden = 99
+
+    // Remove SNPs that occur within <ref_edge>bp from the end of the reference contig [Default: 150]
+    ref_edge = 150
+
+    // Remove SNPs that occur within <query_edge>bp from the end of the query contig [Default: 150]
+    query_edge = 150
+
+    // SNP density filters: Given density windows provided by dwin, purge windows where more than the allowable window SNPs (wsnps) are found
+    // Default: 3 max per 1000bp, 2 max per 125bp, 1 max per 15bp, filtered from biggest window to smallest
+    // Set --dwin 0 to disable density filtering
+    dwin = "1000,125,15"
+    wsnps = "3,2,1"
+
+    // If running refchooser in snp mode, compare queries to the top X references [Default: 1]
+    n_ref = 1
+
+    // If the assembly file contains the string <trim_name>, remove it from the sample name (e.g. '_contigs_skesa')
+    trim_name = '""'
+
+    // If running SNP pipeline, set the maximum percent of isolates with missing data allowed in the final alignment/distances [Default: 50]
+    max_missing = 50
+
+    // Alternate directory for pybedtools tmp files [Default: "" (system default)]
+    tmp_dir = ""
+
+    // Set IDs for isolates to exclude from analysis (Comma-separated list)
+    exclude = ""
+
+    // By default, do not perform edge-filtered SNP rescuing
+    rescue = "norescue"
+
+    // Help function
+    help = "nohelp"
+    h = "nohelp"
+
+    // Bootstrap settings for iqTree
+    notree = "none" // Dummy setting to skip tree-building
+    b = 0 // Nonparametric bootstrap replicates
+    bb = 1000 // Ultrafast bootstrap replicates
+    model = "MFP+MERGE+ASC" // iqTree model
+}

@@ -1,0 +1,125 @@
+name: Build Custom Containers and Update XML
+
+on:
+  push:
+    branches: [ main ]
+    paths:
+      # This will run for any change under the 'tools' directory.
+      - 'tools/**'
+  workflow_dispatch:
+
+# Grant write permissions for the workflow to commit the patched XML file back.
+permissions:
+  contents: write
+
+jobs:
+  build-and-patch:
+    name: Build Container and Patch XML
+    runs-on: ubuntu-latest
+    steps:
+      # --- 1. Checkout repository with a token that can write back ---
+      - name: Checkout repository
+        uses: actions/checkout@v4
+        with:
+          # A Personal Access Token (PAT) with 'repo' scope is required to push commits back.
+          token: ${{ secrets.GH_PAT }}
+          fetch-depth: 0 # Fetch all history for a reliable git diff
+
+      # --- 2. Authenticate to Quay.io ---
+      - name: Authenticate to Quay.io
+        uses: docker/login-action@v3
+        with:
+          registry: quay.io
+          username: ${{ secrets.QUAY_USER }}
+          password: ${{ secrets.QUAY_PASSWORD }}
+
+      # --- 3. Set up Docker Buildx ---
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      # --- 4. Detect Changed Top-Level Tool Directories ---
+      - name: Detect Changed Tool Directories
+        id: changed
+        run: |
+          echo "Detecting changed tool directories..."
+          CHANGED_FILES=$(git diff --name-only ${{ github.event.before }} ${{ github.event.after }})
+          # This robustly finds the parent tool directory (e.g., tools/cfsan2snp2) for any changed file.
+          CHANGED_DIRS=$(echo "$CHANGED_FILES" | grep -E '^tools/' | sed -E 's|^(tools/[^/]+)/.*|\1|' | sort -u)
+
+          if [ -z "$CHANGED_DIRS" ]; then
+            echo "No changed tool directories detected. Skipping build."
+            echo "skip_build=true" >> $GITHUB_OUTPUT
+          else
+            echo "The following top-level tool directories will be processed:"
+            echo "$CHANGED_DIRS"
+            echo "skip_build=false" >> $GITHUB_OUTPUT
+            echo "tool_dirs<<EOF" >> $GITHUB_OUTPUT
+            echo "$CHANGED_DIRS" >> $GITHUB_OUTPUT
+            echo "EOF" >> $GITHUB_OUTPUT
+          fi
+
+      # --- 5. Loop Through Changed Tools to Build and Patch ---
+      - name: Build and Patch Each Changed Tool
+        if: steps.changed.outputs.skip_build == 'false'
+        run: |
+          set -e
+          echo "${{ steps.changed.outputs.tool_dirs }}" | while read -r tool_dir; do
+            [ -z "$tool_dir" ] && continue
+            
+            # This is the top-level directory name, e.g., 'cfsan2snp2'
+            TOOL_NAME=$(basename "$tool_dir")
+            echo "=================================================="
+            echo "Processing repository: ${TOOL_NAME}"
+            echo "=================================================="
+
+            # --- THE KEY CHANGE ---
+            # Define the path to the inner directory which contains the actual source files.
+            INNER_TOOL_DIR="${tool_dir}/${TOOL_NAME}"
+
+            DOCKERFILE_PATH="${INNER_TOOL_DIR}/Dockerfile"
+            if [ ! -f "$DOCKERFILE_PATH" ]; then
+              echo "::warning::Dockerfile not found at ${DOCKERFILE_PATH}. This tool may not be a custom-build tool. Skipping."
+              continue
+            fi
+
+            # --- A. Build and Push the Docker Image ---
+            IMAGE_NAME="quay.io/galaxytrakr/${TOOL_NAME}"
+            UNIQUE_TAG=$(git rev-parse --short HEAD)
+            FULL_IMAGE_TAG="${IMAGE_NAME}:${UNIQUE_TAG}"
+            
+            echo "Building and pushing custom image: ${FULL_IMAGE_TAG}"
+            # The 'context' for the build is the inner directory, where the source code lives.
+            docker build -t "${FULL_IMAGE_TAG}" -f "${DOCKERFILE_PATH}" "${INNER_TOOL_DIR}"
+            docker push "${FULL_IMAGE_TAG}"
+
+            # --- B. Patch ALL Tool XML Files in the Inner Directory ---
+            echo "Searching for and patching all .xml files in ${INNER_TOOL_DIR}"
+            for TOOL_XML_FILE in ${INNER_TOOL_DIR}/*.xml; do
+              # Check if the glob found any files to avoid errors
+              if [ -f "$TOOL_XML_FILE" ]; then
+                  echo "--- Updating XML file: ${TOOL_XML_FILE} ---"
+                  sed -i -E "s|<container type=\"docker\">.*</container>|<container type=\"docker\">${FULL_IMAGE_TAG}</container>|" "${TOOL_XML_FILE}"
+                  cat "${TOOL_XML_FILE}" | grep "<container"
+              fi
+            done
+
+            echo "Repository ${TOOL_NAME} built and patched successfully."
+            echo ""
+          done
+
+      # --- 6. Commit and Push all patched XML files back to the repository ---
+      - name: Commit and Push All Updated XML Files
+        if: steps.changed.outputs.skip_build == 'false'
+        run: |
+          git config --global user.name 'github-actions[bot]'
+          git config --global user.email 'github-actions[bot]@users.noreply.github.com'
+          
+          if ! git diff-index --quiet HEAD; then
+            echo "Detected changes in tool XML files. Committing and pushing back..."
+            # Add all changes under the tools directory
+            git add tools/
+            git commit -m "ci: Update container tags for built tools"
+            git push
+          else
+            echo "No files were patched by the workflow, nothing to commit."
+          fi

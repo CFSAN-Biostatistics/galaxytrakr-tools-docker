@@ -1,0 +1,95 @@
+###############################################
+# Mercurial metadata and temporary files
+###############################################
+.hg/
+**/.hg/
+.hgignore
+.hgtags
+.hgsigs
+*.orig
+*.rej
+
+###############################################
+# Galaxy / Planemo build and cache directories
+###############################################
+.planemo/
+**/.planemo/
+.involucro/
+**/.involucro/
+.involucro.lock
+.edam_cache/
+**/.edam_cache/
+**/database/
+**/compiled_templates/
+build/
+dist/
+.eggs/
+
+###############################################
+# Python bytecode, environments, and packaging artifacts
+###############################################
+__pycache__/
+*.py[cod]
+*$py.class
+.venv/
+venv/
+env/
+Pipfile.lock
+poetry.lock
+*.egg-info/
+*.egg
+MANIFEST
+
+###############################################
+# Docker and Singularity build artifacts
+###############################################
+*.tar
+*.img
+*.sif
+*.singularity
+docker-compose.override.yml
+
+# Ignore large compressed reference or test files
+*.tar.gz
+*.tgz
+*.tar.bz2
+*.zip
+*.gz
+*.bz2
+*.xz
+*.7z
+
+# Specifically ignore database and data_manager payloads
+**/tool-data/*.tar.gz
+**/tool-data/*.zip
+**/tool-data/*.gz
+**/test-data/*.tar.gz
+**/test-data/*.zip
+**/test-data/*.gz
+**/data_manager/*.tar.gz
+**/data_manager/*.zip
+**/data_manager/*.gz
+
+###############################################
+# OS and editor-specific junk
+###############################################
+.DS_Store
+Thumbs.db
+*.swp
+*.swo
+*.tmp
+*.log
+*.cache
+*.bak
+.idea/
+.vscode/
+*.code-workspace
+
+###############################################
+# GitHub Actions and CI temporary files
+###############################################
+.github/workflows/__pycache__/
+.github/workflows/*.log
+.github/workflows/tmp/
+.github/actions/tmp/
+

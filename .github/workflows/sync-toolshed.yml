@@ -1,0 +1,108 @@
+name: Sync Galaxy Tools to Tool Shed via Planemo
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - 'tools/**'
+  pull_request:
+    branches: [main]
+    paths:
+      - 'tools/**'
+  workflow_dispatch:
+
+jobs:
+  sync-tools:
+    name: Upload Changed Tools to Tool Shed
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Install Planemo and dependencies
+        run: |
+          set -euo pipefail
+          sudo apt-get update -qq
+          sudo apt-get install -y python3 python3-venv python3-pip curl rsync
+          python3 -m venv .venv
+          source .venv/bin/activate
+          pip install --upgrade pip
+          pip install planemo
+
+      - name: Identify Changed Tool Directories
+        id: changes
+        run: |
+          set -euo pipefail
+          echo "Detecting changed Galaxy tools..."
+          if [[ "${{ github.event_name }}" == "pull_request" ]]; then
+            CHANGED=$(git diff --name-only ${{ github.event.pull_request.base.sha }}..${{ github.event.pull_request.head.sha }} | grep '^tools/' || true)
+          else
+            CHANGED=$(git diff --name-only ${{ github.event.before }} ${{ github.event.after }} | grep '^tools/' || true)
+          fi
+          echo "$CHANGED" | sed -E 's|^tools/([^/]+).*|tools/\1|' | sort -u > changed_dirs.txt
+          if [[ -s changed_dirs.txt ]]; then
+            echo "Detected changed tool directories:"
+            cat changed_dirs.txt
+            echo "tool_dirs=$(paste -sd ' ' changed_dirs.txt)" >> "$GITHUB_OUTPUT"
+          else
+            echo "No changed tools detected."
+            echo "tool_dirs=" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Update Tool Shed
+        if: steps.changes.outputs.tool_dirs != ''
+        env:
+          PLANEMO_SHED_KEY: ${{ secrets.HG_ES_SHED_KEY}}
+        run: |
+          set -euo pipefail
+          source .venv/bin/activate
+
+          if [[ -z "$PLANEMO_SHED_KEY" ]]; then
+            echo "::error::Secret HG_ES_SHED_KEY is not set. Aborting."
+            exit 1
+          fi
+
+          for dir in ${{ steps.changes.outputs.tool_dirs }}; do
+            TOOL_NAME=$(basename "$dir")
+            echo ">>> Preparing to update/create repository for ${TOOL_NAME}..."
+            echo "    - Target Directory: ${dir}"
+
+            CANDIDATES=("$dir" "$dir/$TOOL_NAME")
+            TARGET_DIR=""
+            for candidate in "${CANDIDATES[@]}"; do
+              if find "$candidate" -maxdepth 1 -type f -name "*.xml" \
+                  | xargs grep -E -q "<(tool|data_manager)"; then
+                TARGET_DIR="$candidate"
+                break
+              fi
+            done
+            if [[ -z "$TARGET_DIR" ]]; then
+              echo "::warning::Skipping ${TOOL_NAME} — no Galaxy tool or data_manager XML found."
+              continue
+            fi
+            echo "   Found Galaxy tool definitions in ${TARGET_DIR}"
+            echo "---"
+            echo ">>> Executing planemo shed_update with explicit API key..."
+            echo "---"
+
+            # FINAL FIX: Explicitly pass the API key with --shed_key
+            planemo shed_update \
+              --shed_target "https://toolrepo.galaxytrakr.org" \
+              --shed_key "$PLANEMO_SHED_KEY" \
+              --force_repository_creation \
+              "$TARGET_DIR"
+
+            EXIT_CODE=$?
+            if [ $EXIT_CODE -ne 0 ]; then
+              echo "::error::Planemo shed_update command failed with exit code $EXIT_CODE."
+              exit $EXIT_CODE
+            fi
+            
+            echo "---"
+            echo ">>> Planemo command finished successfully for ${TOOL_NAME}."
+            echo "---"
+          done
+
+          echo "All changed tools processed successfully by the script."
