@@ -4,6 +4,7 @@ description: CSP2 is a tool for identifying single nucleotide polymorphisms (SNP
 long_description: |-
   CSP2 is a tool for identifying single nucleotide polymorphisms (SNPs) in bacterial genomes.
 homepage_url: https://github.com/CFSAN-Biostatistics/CSP2
+build_source_url: https://github.com/CFSAN-Biostatistics/CSP2.git
 type: unrestricted
 categories:
   - "Test"
