@@ -1,7 +1,7 @@
 <tool id="refchooser" name="Refchooser" version="0.2.1+galaxy0.1" python_template_version="3.5" profile="21.05">
     <description>Select centroidal assembly from a collection of closely-related assemblies, for reference purposes</description>
     <requirements>
-        <container type="docker">cfsanbiostatistics/refchooser:0.2.1</container>
+        <container type="docker">quay.io/galaxytrakr/refchooser:92689f5</container>
         
     </requirements>
     <command detect_errors="exit_code"><![CDATA[
