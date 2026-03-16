@@ -1,7 +1,7 @@
 <tool id="cfsan2snp-screen" name="CSP2 (Screening Mode)" version="0.9.7.7+gt_0.8">
         <description>Screen query assemblies against reference assemblies</description>
         <requirements>
-                <container type="docker">quay.io/galaxytrakr/cfsan2snp2:6f6cee1</container>
+                <container type="docker">quay.io/galaxytrakr/cfsan2snp2:v.0.9.7.7</container>
         </requirements>
         <version_command>nextflow -version</version_command>
         <command detect_errors="exit_code"><![CDATA[
