@@ -103,7 +103,7 @@ jobs:
           done
 
       #Make container repositories public after pushing
-      - name: Make Container Repository Public
+      - name: Make Container Repositories Public
         if: steps.build_logic.outputs.build_required == 'true'
         run: |
           set -e
@@ -113,15 +113,30 @@ jobs:
             
             TOOL_NAME=$(basename "$tool_dir")
             echo "=================================================="
-            echo "Making repository public: quay.io/galaxytrakr/${TOOL_NAME}"
-            echo "=================================================="
+            echo "Processing repository: quay.io/galaxytrakr/${TOOL_NAME}"
             
-            # Use the robot account's token as a Bearer Token for authentication
-            curl -X PUT "https://quay.io/api/v1/repository/galaxytrakr/${TOOL_NAME}" \
-                 -H "Authorization: Bearer ${{ secrets.QUAY_PASSWORD }}" \
+            # Step 1: Generate a short-lived API token scoped to the specific repository.
+            echo "Generating API token for ${TOOL_NAME}..."
+            API_TOKEN=$(curl -s -H "Content-Type: application/json" -X POST \
+              -d '{"service": "quay.io", "scope": "repository:galaxytrakr/'"${TOOL_NAME}"':read,write,admin"}' \
+              --user "${{ secrets.QUAY_USER }}:${{ secrets.QUAY_PASSWORD }}" \
+              "https://quay.io/v2/auth" | jq -r .token)
+
+            if [ -z "$API_TOKEN" ]; then
+                echo "::error::Failed to retrieve Quay API token for ${TOOL_NAME}."
+                exit 1
+            fi
+            echo "::add-mask::${API_TOKEN}" # Mask token in logs
+
+            # Step 2: Use the generated token with the correct 'changevisibility' endpoint.
+            echo "Making repository public..."
+            curl -f -X POST "https://quay.io/api/v1/repository/galaxytrakr/${TOOL_NAME}/changevisibility" \
+                 -H "Authorization: Bearer ${API_TOKEN}" \
                  -H "Content-Type: application/json" \
                  -d '{"visibility": "public"}'
+            echo "=================================================="
           done
+
 
       # --- Step 6 is unchanged ---
       - name: Commit and Push Updated XML Files
