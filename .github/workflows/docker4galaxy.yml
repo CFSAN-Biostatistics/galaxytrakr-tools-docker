@@ -101,6 +101,29 @@ jobs:
               fi
             done
           done
+          
+      #Make container repositories public after pushing
+      - name: Make Container Repository Public
+        if: steps.build_logic.outputs.build_required == 'true'
+        env:
+          QUAY_USER: ${{ secrets.QUAY_USER }}
+          QUAY_PASSWORD: ${{ secrets.QUAY_PASSWORD }}
+        run: |
+          set -e
+          echo "Making repositories public..."
+          for tool_dir in ${{ steps.build_logic.outputs.tool_dirs }}; do
+            [ -z "$tool_dir" ] && continue
+            
+            TOOL_NAME=$(basename "$tool_dir")
+            echo "=================================================="
+            echo "Making repository public: quay.io/galaxytrakr/${TOOL_NAME}"
+            echo "=================================================="
+            
+            curl --user "${QUAY_USER}:${QUAY_PASSWORD}" \
+                 -X PUT "https://quay.io/api/v1/repository/galaxytrakr/${TOOL_NAME}" \
+                 -H "Content-Type: application/json" \
+                 -d '{"visibility": "public"}'
+          done
 
       # --- Step 6 is unchanged ---
       - name: Commit and Push Updated XML Files
