@@ -102,8 +102,8 @@ jobs:
             done
           done
 
-      #Make container repositories public after pushing
-         - name: Make Container Repositories Public
+      # Make container repositories public after pushing
+      - name: Make Container Repositories Public
         if: steps.build_logic.outputs.build_required == 'true'
         run: |
           set -e
@@ -123,7 +123,6 @@ jobs:
                  -H "Content-Type: application/json" \
                  -d '{"visibility": "public"}'
           done
-
 
       # --- Step 6 is unchanged ---
       - name: Commit and Push Updated XML Files
