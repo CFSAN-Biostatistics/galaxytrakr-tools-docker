@@ -40,7 +40,6 @@ RUN pip install --no-cache-dir -U \
     pandas~=1.2.0 pybedtools refchooser scikit-learn
 
 # ---- Fetch sources/artifacts ----
-    
 # bedtools
 ADD https://github.com/arq5x/bedtools2/archive/refs/tags/v${BEDTOOLS_VER}.tar.gz .
 # mummer

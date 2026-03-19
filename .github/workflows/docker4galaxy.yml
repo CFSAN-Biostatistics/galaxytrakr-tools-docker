@@ -102,7 +102,6 @@ jobs:
             done
           done
 
-      # Make container repositories public after pushing
       - name: Make Container Repositories Public
         if: steps.build_logic.outputs.build_required == 'true'
         run: |
@@ -116,13 +115,13 @@ jobs:
             echo "Making repository public: quay.io/galaxytrakr/${TOOL_NAME}"
             echo "=================================================="
 
-            # Use the robot account's token (from QUAY_PASSWORD) directly
-            # as the bearer token for the correct 'changevisibility' endpoint.
+            # Use the dedicated OAuth application token which has full admin rights
             curl -f -X POST "https://quay.io/api/v1/repository/galaxytrakr/${TOOL_NAME}/changevisibility" \
-                 -H "Authorization: Bearer ${{ secrets.QUAY_PASSWORD }}" \
+                 -H "Authorization: Bearer ${{ secrets.QUAY_OAUTH_TOKEN }}" \
                  -H "Content-Type: application/json" \
                  -d '{"visibility": "public"}'
           done
+
 
       # --- Step 6 is unchanged ---
       - name: Commit and Push Updated XML Files
