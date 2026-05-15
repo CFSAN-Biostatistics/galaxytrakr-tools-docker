@@ -44,9 +44,9 @@
       echo "$name" ;
       echo "-=-=-=-=-" ;
       touch output/data_log.txt ;
-      /usr/local/bin/SeqSero2S.py --version ;
+      SeqSero2S.py --version ;
       echo "-=-=-=-=-" ;
-      /usr/local/bin/SeqSero2S.py
+      SeqSero2S.py
         -p \${GALAXY_SLOTS:-1}
         -t $tval 
         -m $mode
