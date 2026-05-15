@@ -49,7 +49,7 @@ RUN mamba create -n seqsero2s -c conda-forge -c bioconda \
     bwa>=0.7 \
     seqtk>=1.3 \
     stringmlst>=0.6 \
-    mlst>=2.32.2 \
+    mlst>=2.32 \
     perl-list-moreutils \
     && mamba clean -afy
 
