@@ -69,7 +69,9 @@ jobs:
             # Default to the short commit SHA if no version is specified.
             VERSION_TAG=$(git rev-parse --short HEAD)
             if [ -f "$SHED_FILE_PATH" ] && grep -q "build_source_version:" "$SHED_FILE_PATH"; then
-              VERSION_TAG=$(grep "build_source_version:" "$SHED_FILE_PATH" | awk '{print $2}')
+              # Fixing issue with parsing versions and tags
+              # VERSION_TAG=$(grep "build_source_version:" "$SHED_FILE_PATH" | awk '{print $2}')
+              VERSION_TAG=$(grep "build_source_version:" "$SHED_FILE_PATH" | cut -d':' -f2- | xargs)
               echo "Found explicit version in .shed.yml: ${VERSION_TAG}"
             else
               echo "No build_source_version found. Using git SHA as fallback tag: ${VERSION_TAG}"
@@ -77,7 +79,9 @@ jobs:
             
             # --- B. Prepare Build Context ---
             if [ -f "$SHED_FILE_PATH" ] && grep -q "build_source_url:" "$SHED_FILE_PATH"; then
-              GIT_URL=$(grep "build_source_url:" "$SHED_FILE_PATH" | awk '{print $2}')
+              # Fixing issue with parsing versions and tags
+              # GIT_URL=$(grep "build_source_url:" "$SHED_FILE_PATH" | awk '{print $2}')
+              GIT_URL=$(grep "build_source_url:" "$SHED_FILE_PATH" | cut -d':' -f2- | xargs)
               CLONE_DIR="${INNER_TOOL_DIR}/source_repo"
               # Use the same version for cloning
               echo "Cloning external source from ${GIT_URL} at version ${VERSION_TAG}"
