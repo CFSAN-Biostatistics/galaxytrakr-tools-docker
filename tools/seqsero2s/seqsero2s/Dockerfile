@@ -27,15 +27,11 @@ FROM base AS builder
 # Update base packages and install build essentials
 RUN apt-get update && \
     apt-get install -y --no-install-recommends \
-        wget \
-        ca-certificates \
-        bash \
+    wget \
+    ca-certificates \
+    bash \
     && apt-get clean && \
     rm -rf /var/lib/apt/lists/*
-
-# Copy the patch script
-COPY patch_stringmlst.sh /tmp/patch_stringmlst.sh
-RUN chmod +x /tmp/patch_stringmlst.sh
 
 # Create conda environment with all dependencies
 # Using mamba for faster dependency resolution
@@ -58,18 +54,22 @@ RUN mamba create -n seqsero2s -c conda-forge -c bioconda \
     && mamba clean -afy
 
 # Install SeqSero2S from local fork
-WORKDIR /tmp/build
+WORKDIR /tmp/build/SeqSero2S
 
-# Copy local SeqSero2S directory
-COPY SeqSero2S /tmp/build/SeqSero2S
+# Copy the current build context (the cloned source code) into the container.
+COPY . .
 
 # Install SeqSero2S
-RUN cd SeqSero2S && \
-    /opt/conda/envs/seqsero2s/bin/python -m pip install . -vv --no-deps --no-build-isolation --no-cache-dir
+RUN /opt/conda/envs/seqsero2s/bin/python -m pip install . -vv --no-deps --no-build-isolation --no-cache-dir
 
-# Apply the stringMLST.py patch (from the conda recipe)
-# The patch replaces dbPrefix reference with cwd to avoid path issues
-RUN PREFIX=/opt/conda/envs/seqsero2s /tmp/patch_stringmlst.sh
+# Apply the stringMLST.py patch inline using 'sed'.
+# This exactly replicates the original python patch script by commenting out the old line and adding the new one.
+RUN if [ -f "/opt/conda/envs/seqsero2s/bin/stringMLST.py" ]; then \
+        sed -i 's|            log = dbPrefix+'\''.log'\''|            # log = dbPrefix+'\''.log'\''\n            log = os.path.join(os.getcwd(), "kmer.log")|g' /opt/conda/envs/seqsero2s/bin/stringMLST.py && \
+        echo "PATCHED: stringMLST.py log path fixed"; \
+    else \
+        echo "SKIP: stringMLST.py not found"; \
+    fi
 
 # ============================================================================
 # Stage 3: Test image - runs validation tests
@@ -110,8 +110,8 @@ ENV PATH=/opt/conda/envs/seqsero2s/bin:$PATH \
 # Install minimal runtime dependencies
 RUN apt-get update && \
     apt-get install -y --no-install-recommends \
-        ca-certificates \
-        procps \
+    ca-certificates \
+    procps \
     && apt-get clean && \
     rm -rf /var/lib/apt/lists/* /tmp/* /var/tmp/*
 
@@ -121,7 +121,6 @@ WORKDIR /data
 # Create non-root user for running the application
 RUN useradd -m -u 1000 -s /bin/bash seqsero2s && \
     chown -R seqsero2s:seqsero2s /data
-
 USER seqsero2s
 
 # Add metadata labels
@@ -135,3 +134,5 @@ LABEL org.opencontainers.image.version="1.1.4" \
       org.opencontainers.image.description="Simplified Salmonella serotype prediction from genome sequencing data"
 
 # No entrypoint or command for dist target
+
+
