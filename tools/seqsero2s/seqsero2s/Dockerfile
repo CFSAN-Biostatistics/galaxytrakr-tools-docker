@@ -2,7 +2,6 @@
 # Default build: docker build -t seqsero2s:latest .
 # Test build: docker build --target test -t seqsero2s:test .
 
-
 # ============================================================================
 # Stage 1: Base image with mambaforge for faster dependency resolution
 # ============================================================================
