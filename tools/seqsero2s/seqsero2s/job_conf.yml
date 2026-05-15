@@ -1,0 +1,37 @@
+runners:
+  local:
+    load: galaxy.jobs.runners.local:LocalJobRunner
+    workers: 16
+
+# handling:
+#   processes:
+#     handler0:
+
+execution:
+  default: local
+  environments:
+    local:
+      runner: local
+    docker_local:
+      runner: local
+      docker_enabled: true
+      # container: "auto"
+      docker_volumes: $defaults
+      # docker_set_user: null
+      docker_run_extra_arguments: "--entrypoint ''"
+      docker_set_user: root
+
+tools:
+- id: seqsero_v2
+  # handler: handler0
+  environment: docker_local
+- id: seqsero2s
+  # handler: handler0
+  environment: docker_local
+
+limits:
+-
+  # Amount of time a job can run (in any environment) before it
+  # will be terminated by Galaxy.
+  type: walltime
+  value: '01:00:00'

@@ -1,0 +1,196 @@
+<tool id="seqsero2s" name="SeqSero2S" version="1.1.4+galaxytrakr">
+    <description>Simplified Salmonella serotype prediction</description>
+    <requirements>
+        <!-- <requirement type="package" version="@VERSION@">seqsero2s</requirement> -->
+        <container type="docker">quay.io/galaxytrakr/seqsero2s:1.1.4</container>
+    </requirements>
+    <command detect_errors="exit_code"><![CDATA[
+      mkdir ./output;
+
+      #if $reads.reads_select == 'history'
+        #set $name = $reads.forward.name.split('.')[0].replace(' ','_')
+        #set $forward = $reads.forward
+        #set $reverse = $reads.reverse
+        #set $infile = $name + "_1.fastq " +  $name + "_2.fastq" 
+        #set $tval = 2
+        #if $reverse.is_of_type('fastq.gz', 'fastqsanger.gz')
+          gunzip -c $reverse > reverse.fastq;
+          #set $reverse = './reverse.fastq'
+          gunzip -c $forward > forward.fastq;
+          #set $forward = './forward.fastq'
+        #end if
+        ln -s $forward ${name}_1.fastq;
+        ln -s $reverse ${name}_2.fastq;
+      #else if $reads.reads_select == 'collection'
+        #set $name = $reads.coll.name.replace(' ', '_')
+        #set $forward = $reads.coll.forward
+        #set $reverse = $reads.coll.reverse
+        #set $infile = $name + "_1.fastq " +  $name + "_2.fastq" 
+        #set $tval = 2
+        #if $reverse.is_of_type('fastq.gz', 'fastqsanger.gz')
+          gunzip -c $reverse > reverse.fastq;
+          #set $reverse = './reverse.fastq'
+          gunzip -c $forward > forward.fastq;
+          #set $forward = './forward.fastq'
+        #end if
+        ln -s $forward "${name}_1.fastq";
+        ln -s $reverse "${name}_2.fastq";
+      #else 
+        #set $name = $reads.assembly.name.replace(' ', '_')
+        #set $infile = $name + ".fasta" 
+        ln -s $reads.assembly "$infile";
+        #set $tval = 4
+        #set $mode='k'
+      #end if
+      echo "$name" ;
+      echo "-=-=-=-=-" ;
+      touch output/data_log.txt ;
+      /usr/local/bin/SeqSero2S.py --version ;
+      echo "-=-=-=-=-" ;
+      /usr/local/bin/SeqSero2S.py
+        -p \${GALAXY_SLOTS:-1}
+        -t $tval 
+        -m $mode
+        -d ./output
+      #if $mode == 'a':
+        -b $maptype 
+      #end if
+        -i $infile &&
+        echo "-=-=-=-=-" ;
+        cat output/data_log.txt &&
+        echo "-=-=-=-=-" &&
+        ls -lah ./output
+    ]]></command>
+    <inputs>
+        
+        <conditional name="reads">
+            <param name="reads_select" type="select" label="Genome assembly,paired-end collection, or two datasets from your history">
+                <option value="collection">Paired collection from your history</option>
+                <option value="history">Two FASTQ datasets from your history</option>
+                <option value="genome">Genome Assembly</option>
+            </param>
+            <when value="collection">
+                <param label="Paired reads" name="coll" type="data_collection" format="fastq,fastqsanger,fastq.gz,fastqsanger.gz" collection_type="paired" />
+            </when>
+            <when value="history">
+                <param label="Forward reads" type="data" name="forward" format="fastq,fastqsanger,fastq.gz,fastqsanger.gz" />
+                <param label="Reverse reads" type="data" name="reverse" format="fastq,fastqsanger,fastq.gz,fastqsanger.gz" />
+            </when>
+            <when value="genome">
+                <param label="Genome assembly" name="assembly" type="data" format="fasta"/>
+            </when>
+        </conditional>
+     
+          <!-- <param name="fastq1" type="data" format="fastq" label="FASTQ paired end read 1" />
+          <param name="fastq2" type="data" format="fastq" label="FASTQ paired end read 2" /> -->
+          <!-- <param name="numofthr" type="select" label="Number of threads">
+          <option value="1">1</option>
+          <option value="2">2</option>
+          <option value="3">3</option>
+          <option value="4">4</option> -->
+        <!-- </param> -->
+        
+        <param label="Analysis mode" type="select" name="mode">
+         <option value="a">allele mode</option>
+         <option value="k">k-mer mode</option>
+        </param>
+
+        <param name="maptype" type="select" label="Algorithms for BWA mapping">
+          <option value="mem">mem</option>
+          <option value="sam">sam</option>
+        </param>
+
+    
+
+    </inputs>
+    <outputs>
+      <data format="tabular" label="SeqSero Results" name="results" from_work_dir="output/SeqSero_result.tsv" />
+    </outputs>
+    <tests>
+       <!-- <test>
+         <param name="reads_select" value="history" />
+         <param name="forward" value="forward.fastq.gz" ftype="fastqsanger.gz" />
+         <param name="reverse" value="reverse.fastq.gz" ftype="fastqsanger.gz" />
+         <output name="results" file="Seqsero_result.tsv" />
+       </test>
+       <test>
+        <param name="reads_select" value="collection" />
+        <param name="coll">
+            <collection type="paired">
+                <element name="forward" value="forward.fastq.gz" ftype="fastqsanger.gz" />
+                <element name="reverse" value="reverse.fastq.gz" ftype="fastqsanger.gz" />
+            </collection>
+        </param>
+        <output name="results" file="Seqsero_result.tsv" />
+       </test> -->
+        <!-- <test>
+         <param name="mode" value="k" />
+         <param name="reads_select" value="history" />
+         <param name="forward" value="forward_25k.fastq.gz" ftype="fastqsanger" />
+         <param name="reverse" value="reverse_25k.fastq.gz" ftype="fastqsanger" />
+         <output name="results" file="Seqsero_result_25k.tsv" />
+       </test>
+       <test>
+        <param name="mode" value="k" />
+        <param name="reads_select" value="collection" />
+        <param name="coll">
+            <collection type="paired">
+                <element name="forward" value="forward_25k.fastq.gz" ftype="fastqsanger.gz" />
+                <element name="reverse" value="reverse_25k.fastq.gz" ftype="fastqsanger.gz" />
+            </collection>
+        </param>
+        <output name="results" file="Seqsero_result_25k_coll.tsv" />
+       </test>
+        <test>
+         <param name="mode" value="a" />
+         <param name="reads_select" value="history" />
+         <param name="forward" value="forward_250k.fastq.gz" ftype="fastqsanger" />
+         <param name="reverse" value="reverse_250k.fastq.gz" ftype="fastqsanger" />
+         <assert_stdout>
+          <has_text text="input genome cannot be identified as Salmonella" />
+         </assert_stdout>
+       </test> -->
+       <!-- <test>
+        <param name="mode" value="a" />
+        <param name="reads_select" value="collection" />
+        <param name="coll">
+            <collection type="paired">
+                <element name="forward" value="forward_25k.fastq.gz" ftype="fastqsanger.gz" />
+                <element name="reverse" value="reverse_25k.fastq.gz" ftype="fastqsanger.gz" />
+            </collection>
+        </param>
+        <output name="results" file="Seqsero_result_allele.tsv" />
+       </test> -->
+       <test>
+        <param name="mode" value="k" />
+        <param name="reads_select" value="genome" />
+        <param name="assembly" value="test/taxonomy/salmonella/contigs.fa" ftype="fasta" />
+        <output name="results" file="test/taxonomy/salmonella/SeqSero_result/SeqSero_result.tsv" />
+       </test>
+    </tests>
+    <help><![CDATA[
+    
+**Usage: SeqSero2.py** 
+
+**Algorithms for BWA mapping**
+
+'mem' for mem, 'sam' for samse/sampe; default=mem; optional; for now SeqSero2 is only optimized for "mem" mode
+   
+    ]]></help>
+    <citations>
+       <citation type="bibtex">
+        @misc{zhang_yin_jones_zhang_deathrage_dinsmore_fitzgeral_fields_deng_2015,
+        title={Salmonella serotype determination utilizing high-throughput genome sequencing data.},
+        journal={J Clin Microbiol}, publisher={ASM},
+        author={Zhang S, Yin Y, Jones MB, Zhang Z, Deatherage Kaiser BL, Dinsmore BA, Fitzgerald C, Fields PI, Deng X.},
+        year={2015}, month={Max},
+        url={http://http://jcm.asm.org/content/early/2015/03/05/JCM.00323-15}},
+       }</citation>
+       <citation type="bibtex">
+        @misc{cfsan_biostatistics_group_2017,
+        title={CFSAN Biostatistics Group fork of SeqSero2},
+        url={https://github.com/CFSAN-Biostatistics/SeqSero2.git}},
+       </citation>
+    </citations>
+
+</tool>

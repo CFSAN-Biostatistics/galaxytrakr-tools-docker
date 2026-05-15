@@ -1,0 +1,3 @@
+[submodule "tools/seqsero2s/seqsero2s/SeqSero2S"]
+	path = tools/seqsero2s/seqsero2s/SeqSero2S
+	url = https://github.com/crashfrog/SeqSero2S.git
