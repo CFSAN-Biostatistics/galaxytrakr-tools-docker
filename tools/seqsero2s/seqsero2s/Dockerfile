@@ -1,71 +1,141 @@
-# Multi-stage Dockerfile for SeqSero2S
-# Default build: docker build -t seqsero2s:latest .
-# Test build: docker build --target test -t seqsero2s:test .
+# Multi-stage Dockerfile for SeqSero2S - NO CONDA VERSION
+# Default build: docker build -f Dockerfile.no-conda -t seqsero2s:latest .
+# Test build: docker build -f Dockerfile.no-conda --target test -t seqsero2s:test .
 
 # ============================================================================
-# Stage 1: Base image with mambaforge for faster dependency resolution
+# Stage 1: Base image with working mlst and Perl 5.34
 # ============================================================================
-FROM condaforge/mambaforge:latest AS base
+FROM staphb/mlst:latest AS base
 
-LABEL maintainer="SeqSero2S Maintainers"
+LABEL maintainer="justin.payne@fda.hhs.gov"
 LABEL description="Simplified Salmonella serotype prediction from genome sequencing data"
 
-# Set environment variables to reduce conda output and ensure non-interactive
-# Disable SSL verification for VPN environments
-ENV CONDA_ALWAYS_YES=true \
-    CONDA_AUTO_UPDATE_CONDA=false \
-    DEBIAN_FRONTEND=noninteractive
-
-# Configure conda to skip SSL verification
-RUN conda config --set ssl_verify false
+ENV DEBIAN_FRONTEND=noninteractive
 
 # ============================================================================
-# Stage 2: Builder - Install all dependencies and SeqSero2S
+# Stage 2: Builder - Install all dependencies from source/binaries
 # ============================================================================
 FROM base AS builder
 
-# Update base packages and install build essentials
+# Version pinning
+ARG PYTHON_VERSION=3.10
+ARG SAMTOOLS_VERSION=1.19
+ARG BEDTOOLS_VERSION=2.31.0
+ARG SRA_TOOLS_VERSION=3.0.10
+ARG SPADES_VERSION=3.15.5
+ARG SALMID_VERSION=0.1.23
+ARG BWA_VERSION=0.7.17
+ARG STRINGMLST_VERSION=0.6.3
+ARG BLAST_VERSION=2.17.0
+
+# Install build dependencies and Python
 RUN apt-get update && \
     apt-get install -y --no-install-recommends \
+    build-essential \
     wget \
     ca-certificates \
-    bash \
+    zlib1g-dev \
+    libbz2-dev \
+    liblzma-dev \
+    libcurl4-openssl-dev \
+    libssl-dev \
+    libncurses5-dev \
+    python${PYTHON_VERSION} \
+    python${PYTHON_VERSION}-dev \
+    python${PYTHON_VERSION}-distutils \
+    python3-pip \
+    autoconf \
+    git \
+    cmake \
     && apt-get clean && \
     rm -rf /var/lib/apt/lists/*
 
-# Create conda environment with all dependencies
-# Using mamba for faster dependency resolution
-RUN mamba create -n seqsero2s -c conda-forge -c bioconda \
-    python>=3 \
-    pip \
-    setuptools \
-    blast>=2.2 \
-    zstd \
-    samtools \
-    bedtools>=2.17 \
-    sra-tools>=2.8 \
-    spades>=3.9 \
-    salmid \
-    bwa>=0.7 \
-    seqtk>=1.3 \
-    stringmlst>=0.6 \
-    mlst>=2.32.2 \
-    perl-list-moreutils \
-    && mamba clean -afy
+# Set up python alternatives
+RUN update-alternatives --install /usr/bin/python python /usr/bin/python${PYTHON_VERSION} 1 && \
+    update-alternatives --install /usr/bin/python3 python3 /usr/bin/python${PYTHON_VERSION} 1
 
-# Install SeqSero2S from local fork
-WORKDIR /tmp/build/SeqSero2S
+WORKDIR /tmp/build
 
-# Copy the current build context (the cloned source code) into the container.
-COPY . .
+# Install BLAST+ from NCBI pre-compiled binaries
+RUN wget --no-check-certificate \
+    https://ftp.ncbi.nlm.nih.gov/blast/executables/blast+/LATEST/ncbi-blast-${BLAST_VERSION}+-x64-linux.tar.gz && \
+    tar -xzf ncbi-blast-${BLAST_VERSION}+-x64-linux.tar.gz && \
+    cp ncbi-blast-${BLAST_VERSION}+/bin/* /usr/local/bin/ && \
+    rm -rf ncbi-blast-${BLAST_VERSION}+*
 
-# Install SeqSero2S
-RUN /opt/conda/envs/seqsero2s/bin/python -m pip install . -vv --no-deps --no-build-isolation --no-cache-dir
+# Install samtools from source
+RUN wget --no-check-certificate https://github.com/samtools/samtools/releases/download/${SAMTOOLS_VERSION}/samtools-${SAMTOOLS_VERSION}.tar.bz2 && \
+    tar -xjf samtools-${SAMTOOLS_VERSION}.tar.bz2 && \
+    cd samtools-${SAMTOOLS_VERSION} && \
+    ./configure --prefix=/usr/local && \
+    make -j$(nproc) && \
+    make install && \
+    cd .. && \
+    rm -rf samtools-${SAMTOOLS_VERSION}*
 
-# Apply the stringMLST.py patch inline using 'sed'.
-# This exactly replicates the original python patch script by commenting out the old line and adding the new one.
-RUN if [ -f "/opt/conda/envs/seqsero2s/bin/stringMLST.py" ]; then \
-        sed -i 's|            log = dbPrefix+'\''.log'\''|            # log = dbPrefix+'\''.log'\''\n            log = os.path.join(os.getcwd(), "kmer.log")|g' /opt/conda/envs/seqsero2s/bin/stringMLST.py && \
+# Install bedtools from source
+RUN wget --no-check-certificate https://github.com/arq5x/bedtools2/releases/download/v${BEDTOOLS_VERSION}/bedtools-${BEDTOOLS_VERSION}.tar.gz && \
+    tar -xzf bedtools-${BEDTOOLS_VERSION}.tar.gz && \
+    cd bedtools2 && \
+    make -j$(nproc) && \
+    cp bin/* /usr/local/bin/ && \
+    cd .. && \
+    rm -rf bedtools*
+
+# Install bwa from source
+# Patch for gcc-10+ multiple definition error
+RUN wget --no-check-certificate https://github.com/lh3/bwa/archive/v${BWA_VERSION}.tar.gz && \
+    tar -xzf v${BWA_VERSION}.tar.gz && \
+    cd bwa-${BWA_VERSION} && \
+    sed -i 's/const uint8_t rle_auxtab\[8\]/extern const uint8_t rle_auxtab[8]/' rle.h && \
+    make -j$(nproc) && \
+    cp bwa /usr/local/bin/ && \
+    cd .. && \
+    rm -rf bwa-* v${BWA_VERSION}.tar.gz
+
+# Install seqtk from source
+RUN wget --no-check-certificate https://github.com/lh3/seqtk/archive/refs/heads/master.tar.gz -O seqtk.tar.gz && \
+    tar -xzf seqtk.tar.gz && \
+    cd seqtk-master && \
+    make -j$(nproc) && \
+    cp seqtk /usr/local/bin/ && \
+    cd .. && \
+    rm -rf seqtk-master seqtk.tar.gz
+
+# Install SPAdes from pre-compiled binary
+RUN wget --no-check-certificate https://github.com/ablab/spades/releases/download/v${SPADES_VERSION}/SPAdes-${SPADES_VERSION}-Linux.tar.gz && \
+    tar -xzf SPAdes-${SPADES_VERSION}-Linux.tar.gz && \
+    cp -r SPAdes-${SPADES_VERSION}-Linux/bin/* /usr/local/bin/ && \
+    cp -r SPAdes-${SPADES_VERSION}-Linux/share/spades /usr/local/share/ && \
+    rm -rf SPAdes-${SPADES_VERSION}-Linux*
+
+# Install SRA Tools from pre-compiled binary
+RUN wget --no-check-certificate https://ftp-trace.ncbi.nlm.nih.gov/sra/sdk/${SRA_TOOLS_VERSION}/sratoolkit.${SRA_TOOLS_VERSION}-ubuntu64.tar.gz && \
+    tar -xzf sratoolkit.${SRA_TOOLS_VERSION}-ubuntu64.tar.gz && \
+    cp -r sratoolkit.${SRA_TOOLS_VERSION}-ubuntu64/bin/* /usr/local/bin/ && \
+    rm -rf sratoolkit.${SRA_TOOLS_VERSION}-ubuntu64*
+
+# Install Python packages
+RUN python3 -m pip install --no-cache-dir --upgrade pip setuptools wheel
+
+# Install SalmID from GitHub (not on PyPI)
+RUN wget --no-check-certificate https://github.com/hcdenbakker/SalmID/archive/refs/tags/${SALMID_VERSION}.tar.gz -O salmid.tar.gz && \
+    tar -xzf salmid.tar.gz && \
+    cd SalmID-${SALMID_VERSION} && \
+    python3 -m pip install --no-cache-dir . && \
+    cd .. && \
+    rm -rf SalmID-${SALMID_VERSION} salmid.tar.gz
+
+# Install stringMLST from PyPI
+RUN python3 -m pip install --no-cache-dir stringmlst==${STRINGMLST_VERSION}
+
+# Copy and install SeqSero2S from local fork
+COPY ./SeqSero2S ./SeqSero2S
+RUN python3 -m pip install ./SeqSero2S --no-deps --no-build-isolation --no-cache-dir
+
+# Apply the stringMLST.py patch to fix log path
+RUN if [ -f "/usr/local/bin/stringMLST.py" ]; then \
+        sed -i 's|            log = dbPrefix+'\''\.log'\''|            # log = dbPrefix+'\''\.log'\''\n            log = os.path.join(os.getcwd(), "kmer.log")|g' /usr/local/bin/stringMLST.py && \
         echo "PATCHED: stringMLST.py log path fixed"; \
     else \
         echo "SKIP: stringMLST.py not found"; \
@@ -76,49 +146,103 @@ RUN if [ -f "/opt/conda/envs/seqsero2s/bin/stringMLST.py" ]; then \
 # ============================================================================
 FROM builder AS test
 
-# Create test directory
 WORKDIR /test
 
-# Run test commands from the conda recipe
+# Run test commands
 RUN echo "Running SeqSero2S tests..." && \
-    /opt/conda/envs/seqsero2s/bin/SeqSero2S.py -h && \
+    SeqSero2S.py -h && \
     echo "SeqSero2S.py -h: PASSED" && \
-    /opt/conda/envs/seqsero2s/bin/blastn -help && \
+    blastn -help && \
     echo "blastn -help: PASSED" && \
-    /opt/conda/envs/seqsero2s/bin/SalmID.py -h && \
+    SalmID.py -h && \
     echo "SalmID.py -h: PASSED" && \
-    /opt/conda/envs/seqsero2s/bin/mlst -h && \
+    mlst -h && \
     echo "mlst -h: PASSED" && \
+    mlst --list | grep -q "senterica_achtman_2" && \
+    echo "mlst --list | grep senterica_achtman_2: PASSED" && \
+    samtools --version && \
+    echo "samtools: PASSED" && \
+    bedtools --version && \
+    echo "bedtools: PASSED" && \
+    bwa 2>&1 | grep -q "index sequences" && \
+    echo "bwa: PASSED" && \
+    seqtk 2>&1 | grep -q "Usage:" && \
+    echo "seqtk: PASSED" && \
+    spades.py --version && \
+    echo "spades: PASSED" && \
     echo "All tests completed successfully!"
 
-# Default command shows test results
 CMD ["echo", "All SeqSero2S tests passed successfully!"]
 
 # ============================================================================
 # Stage 4: Production/Distribution image - minimal runtime (DEFAULT)
 # ============================================================================
-FROM condaforge/mambaforge:latest AS dist
+FROM ubuntu:jammy AS dist
 
-# Copy conda environment from builder
-COPY --from=builder /opt/conda/envs/seqsero2s /opt/conda/envs/seqsero2s
-
-# Update PATH to use the conda environment
-ENV PATH=/opt/conda/envs/seqsero2s/bin:$PATH \
-    CONDA_DEFAULT_ENV=seqsero2s \
-    CONDA_PREFIX=/opt/conda/envs/seqsero2s
-
-# Install minimal runtime dependencies
+# Install ONLY runtime dependencies (no -dev packages, no build tools)
 RUN apt-get update && \
     apt-get install -y --no-install-recommends \
     ca-certificates \
     procps \
+    zlib1g \
+    libbz2-1.0 \
+    liblzma5 \
+    libcurl4 \
+    libssl3 \
+    libncurses5 \
+    python3.10 \
+    python3.10-minimal \
+    libpython3.10-stdlib \
+    perl \
+    perl-base \
     && apt-get clean && \
     rm -rf /var/lib/apt/lists/* /tmp/* /var/tmp/*
+
+# Copy compiled binaries ONLY (not entire /usr/local)
+COPY --from=builder /usr/local/bin/blastn /usr/local/bin/
+COPY --from=builder /usr/local/bin/blastp /usr/local/bin/
+COPY --from=builder /usr/local/bin/blastx /usr/local/bin/
+COPY --from=builder /usr/local/bin/makeblastdb /usr/local/bin/
+COPY --from=builder /usr/local/bin/samtools /usr/local/bin/
+COPY --from=builder /usr/local/bin/bedtools /usr/local/bin/
+COPY --from=builder /usr/local/bin/bwa /usr/local/bin/
+COPY --from=builder /usr/local/bin/seqtk /usr/local/bin/
+COPY --from=builder /usr/local/bin/spades.py /usr/local/bin/
+COPY --from=builder /usr/local/bin/fastq-dump /usr/local/bin/
+COPY --from=builder /usr/local/bin/fasterq-dump /usr/local/bin/
+COPY --from=builder /usr/local/bin/SalmID.py /usr/local/bin/
+
+# Copy Python scripts/packages (only dist-packages, not whole python install)
+COPY --from=builder /usr/local/lib/python3.10/dist-packages /usr/local/lib/python3.10/dist-packages
+
+# Copy Python scripts to bin
+COPY --from=builder /usr/local/lib/python3.10/dist-packages/bin/* /usr/local/bin/
+
+# Copy SPAdes shared files (required for spades.py to run)
+COPY --from=builder /usr/local/share/spades /usr/local/share/spades
+
+# Copy mlst and its dependencies from base (StaphB image)
+COPY --from=base /mlst-2.32.2 /mlst-2.32.2
+
+# Copy perl modules required by mlst
+COPY --from=base /usr/share/perl5 /usr/share/perl5
+COPY --from=base /usr/lib/x86_64-linux-gnu/perl5 /usr/lib/x86_64-linux-gnu/perl5
+
+# Symlink mlst to standard location
+RUN ln -s /mlst-2.32.2/bin/mlst /usr/local/bin/mlst
+
+# Set up python symlinks
+RUN ln -sf /usr/bin/python3.10 /usr/bin/python && \
+    ln -sf /usr/bin/python3.10 /usr/bin/python3
+
+# Update PATH
+ENV PATH=/usr/local/bin:$PATH \
+    PYTHONPATH=/usr/local/lib/python3.10/dist-packages
 
 # Create working directory
 WORKDIR /data
 
-# Create non-root user for running the application
+# Create non-root user
 RUN useradd -m -u 1000 -s /bin/bash seqsero2s && \
     chown -R seqsero2s:seqsero2s /data
 USER seqsero2s
@@ -132,7 +256,3 @@ LABEL org.opencontainers.image.version="1.1.4" \
       org.opencontainers.image.licenses="GPL-2.0-or-later" \
       org.opencontainers.image.title="SeqSero2S" \
       org.opencontainers.image.description="Simplified Salmonella serotype prediction from genome sequencing data"
-
-# No entrypoint or command for dist target
-
-
