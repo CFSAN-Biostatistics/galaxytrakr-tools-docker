@@ -28,20 +28,19 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
 RUN python${PYTHON_VER} -m venv --copies /opt/venv
 ENV PATH="/opt/venv/bin:${PATH}"
 
-# Install Python dependencies (add any additional packages here)
+# Install Python dependencies
 RUN pip install --no-cache-dir -U pip && \
     pip install --no-cache-dir pandas
 
 # Clone mitokmer2 source code from GitHub
 RUN git clone https://github.com/mmammel8/mitokmer2.git /opt/mitokmer2
 
-# Compile the two C++ programs
-# kmer_build_mt: builds the k-mer probe database
-# kmer_read_mt:  screens reads against the probe database
 WORKDIR /opt/mitokmer2
-RUN g++ -O3 kmer_build_mt.cpp -o kmerbuild -lz && \
-    g++ -O3 kmer_read_mt.cpp  -o kmerread  -lz && \
-    chmod +x kmerbuild kmerread
+
+# Compile the C++ read-screening program
+# kmer_read_1.cpp -> kmerread
+RUN g++ -O3 kmer_read_1.cpp -o kmerread -lz && \
+    chmod +x kmerread
 
 # Install any Python requirements declared in the repo
 RUN if [ -f requirements.txt ]; then \
@@ -64,11 +63,10 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     python3.8-distutils \
     && rm -rf /var/lib/apt/lists/*
 
-# Copy compiled binaries from build stage
-COPY --from=build /opt/mitokmer2/kmerbuild /usr/local/bin/kmerbuild
-COPY --from=build /opt/mitokmer2/kmerread  /usr/local/bin/kmerread
+# Copy compiled binary from build stage
+COPY --from=build /opt/mitokmer2/kmerread /usr/local/bin/kmerread
 
-# Copy Python scripts from build stage
+# Copy Python scripts and supporting files from build stage
 COPY --from=build /opt/mitokmer2 /opt/mitokmer2
 
 # Copy Python virtual environment from build stage
@@ -76,13 +74,12 @@ COPY --from=build /opt/mitokmer2 /opt/mitokmer2
 COPY --from=build /opt/venv /opt/venv
 
 # Refresh the dynamic linker cache so zlib and other shared
-# libraries copied from the build stage are found at runtime
+# libraries are found at runtime
 RUN ldconfig || true
 
 # Ensure all users (including arbitrary Galaxy UIDs) can
 # read and execute binaries, scripts, and the venv
-RUN chmod a+rx  /usr/local/bin/kmerbuild \
-                /usr/local/bin/kmerread && \
+RUN chmod a+rx  /usr/local/bin/kmerread && \
     chmod -R a+rX /opt/mitokmer2 && \
     chmod -R a+rX /opt/venv
 

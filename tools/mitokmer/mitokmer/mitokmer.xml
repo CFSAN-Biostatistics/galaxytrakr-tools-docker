@@ -1,48 +1,58 @@
-tool id="mitokmer" name="mitoKmer" version="2.0+galaxy0.1" python_template_version="3.5" profile="21.05">
+<tool id="mitokmer" name="mitoKmer" version="2.0+galaxy0.1" python_template_version="3.5" profile="21.05">
     <description>Identify metagenomic mitochondrial reads by k-mer database matching</description>
     <requirements>
         <container type="docker">quay.io/galaxytrakr/mitokmer2:latest</container>
     </requirements>
 
     <command detect_errors="exit_code"><![CDATA[
-        ## ── Working directory layout ──────────────────────────────────────────
-        mkdir -p ./fasta ./mitoch ./reads ./output &&
+        ## ── kmerread expects files at specific relative paths ─────────────────
+        ## ./mitoch/mitoch_probes.txt.gz  - probe database
+        ## ./jobs1/jobs1.txt              - jobs file listing sample reads
+        ## It is invoked with no arguments: ./kmerread
+        mkdir -p ./mitoch ./jobs1 ./reads &&
 
-        ## ── Stage the probe database (gzipped) ───────────────────────────────
-        ln -sf '${probe_db}' ./mitoch/mitoch_probes.txt.gz &&
+        ## ── Link probe database to the path kmerread expects ─────────────────
+        ln -sf '${probe_db.fields.path}' ./mitoch/mitoch_probes.txt.gz &&
 
-        ## ── Stage input FASTQ/FASTA reads ────────────────────────────────────
-        #set sample_name = $reads[0].element_identifier.replace(' ', '_')
+        ## ── Stage input reads ─────────────────────────────────────────────────
         #for read in $reads
             ln -sf '${read}' ./reads/${read.element_identifier.replace(' ', '_')} &&
         #end for
 
-        ## ── Build the jobs file expected by kmerread ─────────────────────────
-        python3 /opt/mitokmer2/make_jobs_file.py
-            --sample '${sample_name}'
-            --reads ./reads
-            --output ./jobs/jobs.txt &&
+        ## ── Write the jobs file in the format kmerread expects ───────────────
+        ## Line 1: <sample_name> <number_of_files>
+        ## Lines 2+: absolute path to each read file, one per line
+        #set sample_name = $reads[0].element_identifier.replace(' ', '_').split('_')[:-1] | join('_')
+        echo "${sample_name} ${reads|length}" > ./jobs1/jobs1.txt &&
+        #for read in $reads
+            echo "\$PWD/reads/${read.element_identifier.replace(' ', '_')}" >> ./jobs1/jobs1.txt &&
+        #end for
 
-        ## ── Run kmerread ──────────────────────────────────────────────────────
-        kmerread
-            --jobs    ./jobs/jobs.txt
-            --probes  ./mitoch/mitoch_probes.txt.gz
-            --outdir  ./output &&
+        ## ── Run kmerread (reads jobs1/jobs1.txt and mitoch/mitoch_probes.txt.gz
+        ##    by convention; no CLI arguments) ──────────────────────────────────
+        kmerread &&
 
         ## ── Summarise results into CSV ────────────────────────────────────────
-        python3 /opt/mitokmer2/readbatch_mt.py
-            -i ./output
-            -o ./output/results.csv
+        python3 /opt/mitokmer2/kmer_read_m7.py
+            -i ./jobs1
+            -o '${results_csv}'
     ]]></command>
 
     <inputs>
+        <!-- Probe database selected from Galaxy data table -->
         <param name="probe_db"
-            type="select"
-            label="Mitochondrial k-mer probe database">
-          <options from_data_table="mitokmer_probe_db">
-            <filter type="sort_by" column="1" />
-            <validator type="no_options" message="No databases installed..." />
-          </options>
+               type="select"
+               label="Mitochondrial k-mer probe database"
+               help="Select a pre-installed mitochondrial k-mer probe database.
+                     Databases are managed by your Galaxy administrator via the
+                     mitokmer_probe_db data table.">
+            <options from_data_table="mitokmer_probe_db">
+                <filter type="sort_by" column="1" />
+                <validator type="no_options"
+                           message="No mitochondrial k-mer probe databases are
+                                    currently installed. Please contact your
+                                    Galaxy administrator." />
+            </options>
         </param>
 
         <!-- One or more FASTQ/FASTA files for a single sample -->
@@ -60,14 +70,12 @@ tool id="mitokmer" name="mitoKmer" version="2.0+galaxy0.1" python_template_versi
     <outputs>
         <data name="results_csv"
               format="csv"
-              label="mitoKmer results for ${on_string}"
-              from_work_dir="output/results.csv"
-              hidden="false" />
+              label="mitoKmer results for ${on_string}" />
     </outputs>
 
     <tests>
         <test>
-            <param name="probe_db" value="test/mitoch_probes_sample.txt.gz" />
+            <param name="probe_db" value="mitoch_probes_sample" />
             <param name="reads">
                 <collection type="list">
                     <element name="Plodia_R1" value="test/Plodia_R1.fastq.gz" />
@@ -97,10 +105,9 @@ unique k-mers.
 Inputs
 ------
 **Mitochondrial k-mer probe database**
-    A gzipped probe file (``mitoch_probes.txt.gz``) previously generated by the
-    mitoKmer database-build pipeline.  A comprehensive database (~300 MB) is
-    available from the tool author; a small toy database for testing is included
-    in the tool repository.
+    Select a pre-installed probe database from the dropdown.  Databases are
+    managed by your Galaxy administrator and registered in the
+    ``mitokmer_probe_db`` data table.
 
 **Input reads**
     One or more FASTQ or FASTA files (gzipped or plain) for a single sample,
@@ -120,27 +127,9 @@ Output
 
     Example output for the "Plodia" test sample::
 
-        Rank    Taxon               Reads   Rel_Abund(%)   Unique_kmers
-        Order   Lepidoptera         10      0.1            329
-        Species Plodia interpunctella 462   99.9           466
-
-Building a Custom Probe Database
----------------------------------
-To build your own probe database outside of Galaxy:
-
-1. Create an accession list in the same format as
-   ``test/mitochondriaSample_list.txt``.
-2. Place a gzipped FASTA file for each accession in a ``fasta/`` directory,
-   named ``<accession>.fasta.gz``.
-3. Optionally add accessions to ``mitoch/mitoch_filter.txt`` to exclude
-   sequences from the k-mer probes.
-4. Run::
-
-       python kmer_build_mt.py -i sample_list.txt -d ./fasta
-       gzip ./mitoch/mitoch_probes.txt
-
-5. Supply the resulting ``mitoch_probes.txt.gz`` as the probe database input
-   to this Galaxy tool.
+        Rank    Taxon                   Reads   Rel_Abund(%)   Unique_kmers
+        Order   Lepidoptera             10      0.1            329
+        Species Plodia interpunctella   462     99.9           466
 
 Citation
 --------
