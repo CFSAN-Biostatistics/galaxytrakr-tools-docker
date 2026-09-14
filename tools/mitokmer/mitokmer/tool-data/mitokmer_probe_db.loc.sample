@@ -1,18 +1,18 @@
 # mitoKmer Probe Database Location File
-# 
+#
 # This file lists the mitochondrial k-mer probe databases available to mitoKmer.
 # Entries are tab-separated; do NOT use spaces as delimiters.
+#
+# The database consists of a DIRECTORY containing multiple supporting .txt files
+# (e.g. mitochondria7_data.txt, mitochondria7_key.txt, refKeym7.txt, etc.)
+# The path column should point to that directory.
 #
 # Columns (tab-separated):
 #   value  - unique identifier used internally by Galaxy (no spaces)
 #   name   - human-readable label shown in the tool dropdown
-#   path   - absolute path to the gzipped probe file (mitoch_probes.txt.gz)
+#   path   - absolute path to the database DIRECTORY
 #
 # Example entry (remove the leading # to activate):
 #
-# mito_v1	Mitochondrial DB v1	/galaxy/tool-data/mitokmer/mitoch_probes_v1.txt.gz
+# mitochondria7	Mitochondrial DB v7	/galaxy/tool-data/mitokmer/mitochondria7
 #
-# Multiple databases can be listed, one per line:
-#
-# mito_insects_v1	Insect Mitochondrial DB v1	/galaxy/tool-data/mitokmer/mitoch_probes_insects_v1.txt.gz
-# mito_vertebrates_v1	Vertebrate Mitochondrial DB v1	/galaxy/tool-data/mitokmer/mitoch_probes_vertebrates_v1.txt.gz

@@ -37,10 +37,10 @@ RUN git clone https://github.com/mmammel8/mitokmer2.git /opt/mitokmer2
 
 WORKDIR /opt/mitokmer2
 
-# Compile the C++ read-screening program
-# kmer_read_1.cpp -> kmerread
-RUN g++ -O3 kmer_read_1.cpp -o kmerread -lz && \
-    chmod +x kmerread
+# Compile kmer_read_1.cpp -> kmerread7
+# kmer_read_m7.py calls ./kmerread7 as a subprocess
+RUN g++ -O3 kmer_read_1.cpp -o kmerread7 -lz && \
+    chmod +x kmerread7
 
 # Install any Python requirements declared in the repo
 RUN if [ -f requirements.txt ]; then \
@@ -64,22 +64,25 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     && rm -rf /var/lib/apt/lists/*
 
 # Copy compiled binary from build stage
-COPY --from=build /opt/mitokmer2/kmerread /usr/local/bin/kmerread
+# kmerread7 is called by kmer_read_m7.py as ./kmerread7 so it
+# must be in the working directory at runtime; place it in both
+# /usr/local/bin (for PATH) and /opt/mitokmer2 (for relative invocation)
+COPY --from=build /opt/mitokmer2/kmerread7 /usr/local/bin/kmerread7
+COPY --from=build /opt/mitokmer2/kmerread7 /opt/mitokmer2/kmerread7
 
 # Copy Python scripts and supporting files from build stage
 COPY --from=build /opt/mitokmer2 /opt/mitokmer2
 
 # Copy Python virtual environment from build stage
-# --copies in the build stage ensures no broken symlinks here
 COPY --from=build /opt/venv /opt/venv
 
-# Refresh the dynamic linker cache so zlib and other shared
-# libraries are found at runtime
+# Refresh the dynamic linker cache
 RUN ldconfig || true
 
 # Ensure all users (including arbitrary Galaxy UIDs) can
 # read and execute binaries, scripts, and the venv
-RUN chmod a+rx  /usr/local/bin/kmerread && \
+RUN chmod a+rx  /usr/local/bin/kmerread7 \
+                /opt/mitokmer2/kmerread7 && \
     chmod -R a+rX /opt/mitokmer2 && \
     chmod -R a+rX /opt/venv
 

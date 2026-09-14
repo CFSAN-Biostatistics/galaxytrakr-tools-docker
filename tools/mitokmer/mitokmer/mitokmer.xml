@@ -5,41 +5,44 @@
     </requirements>
 
     <command detect_errors="exit_code"><![CDATA[
-        ## ── kmerread expects files at specific relative paths ─────────────────
-        ## ./mitoch/mitoch_probes.txt.gz  - probe database
-        ## ./jobs1/jobs1.txt              - jobs file listing sample reads
-        ## It is invoked with no arguments: ./kmerread
-        mkdir -p ./mitoch ./jobs1 ./reads &&
+        ## ── All paths are hardcoded in kmer_read_m7.py: ──────────────────────
+        ##   database:  ./mitochondria7/<multiple .txt files>
+        ##   jobs file: ./jobs7m/jobs7m.txt
+        ##   output:    ./jobs7m/jobs7m.csv
+        ##   binary:    ./kmerread7  (called as subprocess by the Python script)
+        mkdir -p ./mitochondria7 ./jobs7m &&
 
-        ## ── Link probe database to the path kmerread expects ─────────────────
-        ln -sf '${probe_db.fields.path}' ./mitoch/mitoch_probes.txt.gz &&
+        ## ── Link database files from the data table directory ─────────────────
+        ## The data table path points to a directory containing all the
+        ## mitochondria7 .txt files; symlink each one into ./mitochondria7/
+        ln -sf '${probe_db.fields.path}'/* ./mitochondria7/ &&
 
-        ## ── Stage input reads ─────────────────────────────────────────────────
-        #for read in $reads
-            ln -sf '${read}' ./reads/${read.element_identifier.replace(' ', '_')} &&
-        #end for
+        ## ── Symlink kmerread7 into the working directory ──────────────────────
+        ## kmer_read_m7.py calls ./kmerread7 (relative path), so it must exist
+        ## in the Galaxy job working directory
+        ln -sf /usr/local/bin/kmerread7 ./kmerread7 &&
 
-        ## ── Write the jobs file in the format kmerread expects ───────────────
-        ## Line 1: <sample_name> <number_of_files>
-        ## Lines 2+: absolute path to each read file, one per line
+        ## ── Write the jobs file ───────────────────────────────────────────────
+        ## Format: sample_name  num_files
+        ##         /abs/path/to/read1
+        ##         /abs/path/to/read2  ...
         #set sample_name = $reads[0].element_identifier.replace(' ', '_').split('_')[:-1] | join('_')
-        echo "${sample_name} ${reads|length}" > ./jobs1/jobs1.txt &&
+        printf '${sample_name}\t${reads|length}\n' > ./jobs7m/jobs7m.txt &&
         #for read in $reads
-            echo "\$PWD/reads/${read.element_identifier.replace(' ', '_')}" >> ./jobs1/jobs1.txt &&
+            printf '${read.file_name}\n' >> ./jobs7m/jobs7m.txt &&
         #end for
 
-        ## ── Run kmerread (reads jobs1/jobs1.txt and mitoch/mitoch_probes.txt.gz
-        ##    by convention; no CLI arguments) ──────────────────────────────────
-        kmerread &&
+        ## ── Run the Python orchestrator (no arguments) ────────────────────────
+        ## kmer_read_m7.py reads jobs7m/jobs7m.txt, calls ./kmerread7,
+        ## and writes results to jobs7m/jobs7m.csv
+        python3 /opt/mitokmer2/kmer_read_m7.py &&
 
-        ## ── Summarise results into CSV ────────────────────────────────────────
-        python3 /opt/mitokmer2/kmer_read_m7.py
-            -i ./jobs1
-            -o '${results_csv}'
+        ## ── Copy output CSV to Galaxy output path ─────────────────────────────
+        cp ./jobs7m/jobs7m.csv '${results_csv}'
     ]]></command>
 
     <inputs>
-        <!-- Probe database selected from Galaxy data table -->
+        <!-- Probe database directory selected from Galaxy data table -->
         <param name="probe_db"
                type="select"
                label="Mitochondrial k-mer probe database"
@@ -107,7 +110,8 @@ Inputs
 **Mitochondrial k-mer probe database**
     Select a pre-installed probe database from the dropdown.  Databases are
     managed by your Galaxy administrator and registered in the
-    ``mitokmer_probe_db`` data table.
+    ``mitokmer_probe_db`` data table.  The database consists of a directory
+    of supporting ``.txt`` files.
 
 **Input reads**
     One or more FASTQ or FASTA files (gzipped or plain) for a single sample,
@@ -120,10 +124,8 @@ Inputs
 Output
 ------
 **Results CSV**
-    A comma-separated file summarising the relative abundance of each taxon
-    detected in the sample.  Columns include taxon name, taxonomic rank, number
-    of reads assigned, relative abundance (%), and the number of unique k-mers
-    supporting the assignment.
+    A comma-separated file with columns: taxid, reads, abundance, uniq.
+    Only taxa with non-zero relative abundance are reported.
 
     Example output for the "Plodia" test sample::
 
