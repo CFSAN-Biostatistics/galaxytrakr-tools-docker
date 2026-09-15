@@ -1,4 +1,4 @@
-tool id="mitokmer" name="mitoKmer" version="2.0+galaxy0.11" python_template_version="3.5" profile="21.05">
+tool id="mitokmer" name="mitoKmer" version="2.0+galaxy0.12" python_template_version="3.5" profile="21.05">
     <description>Identify metagenomic mitochondrial reads by k-mer database matching</description>
     <requirements>
         <container type="docker">quay.io/galaxytrakr/mitokmer:927c4ee</container>

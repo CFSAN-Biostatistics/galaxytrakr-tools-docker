@@ -8,6 +8,7 @@ FROM ubuntu:focal AS build
 ARG DEBIAN_FRONTEND=noninteractive
 ARG PYTHON_VER="3.8"
 
+
 WORKDIR /workspace
 
 # Build dependencies: compiler, zlib dev headers, git, Python
