@@ -80,6 +80,8 @@ COPY --from=build /opt/venv /opt/venv
 # Refresh the dynamic linker cache
 RUN ldconfig || true
 
+RUN ls
+
 # Ensure all users (including arbitrary Galaxy UIDs) can
 # read and execute binaries, scripts, and the venv
 RUN chmod a+rx  /usr/local/bin/kmerread7 \
