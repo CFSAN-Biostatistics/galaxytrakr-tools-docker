@@ -1,4 +1,4 @@
-<tool id="mitokmer" name="mitoKmer" version="2.0+galaxy0.1" python_template_version="3.5" profile="21.05">
+tool id="mitokmer" name="mitoKmer" version="2.0+galaxy0.1" python_template_version="3.5" profile="21.05">
     <description>Identify metagenomic mitochondrial reads by k-mer database matching</description>
     <requirements>
         <container type="docker">quay.io/galaxytrakr/mitokmer:927c4ee</container>
@@ -13,8 +13,8 @@
         mkdir -p ./mitochondria7 ./jobs7m &&
 
         ## ── Link database files from the data table directory ─────────────────
-        ## The data table path points to a directory containing all the
-        ## mitochondria7 .txt files; symlink each one into ./mitochondria7/
+        ## Symlink each file individually from the registered database directory.
+        ## Note: glob must be outside quotes so the shell expands it correctly.
         ln -sf '${probe_db.fields.path}'/* ./mitochondria7/ &&
 
         ## ── Symlink kmerread7 into the working directory ──────────────────────
@@ -23,13 +23,15 @@
         ln -sf /usr/local/bin/kmerread7 ./kmerread7 &&
 
         ## ── Write the jobs file ───────────────────────────────────────────────
-        ## Format: sample_name  num_files
+        ## Format: sample_name <tab> num_files
         ##         /abs/path/to/read1
         ##         /abs/path/to/read2  ...
-        #set sample_name = $reads[0].element_identifier.replace(' ', '_').split('_')[:-1] | join('_')
-        printf '${sample_name}\t${reads|length}\n' > ./jobs7m/jobs7m.txt &&
+        ## Use len() to safely get collection size as an integer
+        #set sample_name = $reads.name.replace(' ', '_')
+        #set read_count = len($reads)
+        printf '%s\t%d\n' '${sample_name}' ${read_count} > ./jobs7m/jobs7m.txt &&
         #for read in $reads
-            printf '${read.file_name}\n' >> ./jobs7m/jobs7m.txt &&
+            printf '%s\n' '${read.file_name}' >> ./jobs7m/jobs7m.txt &&
         #end for
 
         ## ── Run the Python orchestrator (no arguments) ────────────────────────
