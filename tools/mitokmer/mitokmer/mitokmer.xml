@@ -60,7 +60,6 @@ tool id="mitokmer" name="mitoKmer" version="2.0+galaxy0.2" python_template_versi
             </options>
         </param>
 
-        <!-- One or more FASTQ/FASTA files for a single sample -->
         <param name="reads"
                type="data_collection"
                collection_type="list"
