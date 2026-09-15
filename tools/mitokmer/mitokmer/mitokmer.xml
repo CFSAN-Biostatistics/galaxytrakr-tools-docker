@@ -1,4 +1,4 @@
-<tool id="mitokmer" name="mitoKmer" version="2.0+galaxy0.22" profile="21.05">
+<tool id="mitokmer" name="mitoKmer" version="2.0+galaxy0.23" profile="21.05">
     <description>Identify metagenomic mitochondrial reads by k-mer database matching</description>
     <requirements>
         <container type="docker">quay.io/galaxytrakr/mitokmer:e57a559</container>
@@ -23,7 +23,7 @@
         ## ── Stage input reads and build jobs file ────────────────────────────
         #if $reads.reads_type == "single"
             mkdir -p ./reads &&
-            #set sample_name = $reads.input.name.replace(' ', '_')
+            #set sample_name = re.sub('[^\w\-_.]', '_', $reads.input.name)
             #set read_count = 0
             #for $read in $reads.input
                 #set ext = $fix_ext($read.ext)
@@ -40,7 +40,7 @@
         #else
             ## paired collection: forward + reverse
             mkdir -p ./reads &&
-            #set sample_name = $reads.input.name.replace(' ', '_')
+            #set sample_name = re.sub('[^\w\-_.]', '_', $reads.input.name)
             #set fwd_ext = $fix_ext($reads.input.forward.ext)
             #set rev_ext = $fix_ext($reads.input.reverse.ext)
             #set base = re.sub('[^\w\-_.]', '_', $reads.input.element_identifier)
