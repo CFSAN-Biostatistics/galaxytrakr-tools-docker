@@ -1,42 +1,59 @@
-<tool id="mitokmer" name="mitoKmer" version="2.0+galaxy0.2" python_template_version="3.5" profile="21.05">
+<tool id="mitokmer" name="mitoKmer" version="2.0+galaxy0.2" profile="21.05">
     <description>Identify metagenomic mitochondrial reads by k-mer database matching</description>
     <requirements>
         <container type="docker">quay.io/galaxytrakr/mitokmer:e57a559</container>
     </requirements>
 
     <command detect_errors="exit_code"><![CDATA[
-        ## ── All paths are hardcoded in kmer_read_m7.py: ──────────────────────
-        ##   database:  ./mitochondria7/<multiple .txt files>
-        ##   jobs file: ./jobs7m/jobs7m.txt
-        ##   output:    ./jobs7m/jobs7m.csv
-        ##   binary:    ./kmerread7  (called as subprocess by the Python script)
+        #import re
+        #def fix_ext($ext):
+            #set ext = $ext.replace('fastqsanger', 'fastq')
+            #set ext = $ext.replace('fastqillumina', 'fastq')
+            #return $ext
+        #end def
+
         mkdir -p ./mitochondria7 ./jobs7m &&
 
-        ## ── Link database files from the data table directory ─────────────────
-        ## Symlink each file individually from the registered database directory.
-        ## Note: glob must be outside quotes so the shell expands it correctly.
+        ## ── Link database files into working directory ────────────────────────
         ln -sf '${probe_db.fields.path}'/* ./mitochondria7/ &&
 
-        ## ── Symlink kmerread7 into the working directory ──────────────────────
-        ## kmer_read_m7.py calls ./kmerread7 (relative path), so it must exist
-        ## in the Galaxy job working directory
+        ## ── Symlink kmerread7 binary into working directory ───────────────────
         ln -sf /usr/local/bin/kmerread7 ./kmerread7 &&
 
-        ## ── Write the jobs file ───────────────────────────────────────────────
-        ## Format: sample_name <tab> num_files
-        ##         /abs/path/to/read1
-        ##         /abs/path/to/read2  ...
-        ## Use len() to safely get collection size as an integer
-        #set sample_name = $reads.name.replace(' ', '_')
-        #set read_count = len($reads)
-        printf '%s\t%d\n' '${sample_name}' ${read_count} > ./jobs7m/jobs7m.txt &&
-        #for read in $reads
-            printf '%s\n' '${read.file_name}' >> ./jobs7m/jobs7m.txt &&
-        #end for
+        ## ── Stage input reads and build jobs file ────────────────────────────
+        #if $reads.reads_type == "single"
+            mkdir -p ./reads &&
+            #set sample_name = $reads.input.name.replace(' ', '_')
+            #set read_count = 0
+            #for $read in $reads.input
+                #set ext = $fix_ext($read.ext)
+                #set fname = re.sub('[^\w\-_.]', '_', $read.element_identifier) + '.' + $ext
+                ln -sf '$read' './reads/${fname}' &&
+                #set read_count = $read_count + 1
+            #end for
+            printf '%s\t%d\n' '${sample_name}' ${read_count} > ./jobs7m/jobs7m.txt &&
+            #for $read in $reads.input
+                #set ext = $fix_ext($read.ext)
+                #set fname = re.sub('[^\w\-_.]', '_', $read.element_identifier) + '.' + $ext
+                printf '%s\n' './reads/${fname}' >> ./jobs7m/jobs7m.txt &&
+            #end for
+        #else
+            ## paired collection: forward + reverse
+            mkdir -p ./reads &&
+            #set sample_name = $reads.input.name.replace(' ', '_')
+            #set fwd_ext = $fix_ext($reads.input.forward.ext)
+            #set rev_ext = $fix_ext($reads.input.reverse.ext)
+            #set base = re.sub('[^\w\-_.]', '_', $reads.input.element_identifier)
+            #set fwd_fname = $base + '_1.' + $fwd_ext
+            #set rev_fname = $base + '_2.' + $rev_ext
+            ln -sf '$reads.input.forward' './reads/${fwd_fname}' &&
+            ln -sf '$reads.input.reverse' './reads/${rev_fname}' &&
+            printf '%s\t2\n' '${sample_name}' > ./jobs7m/jobs7m.txt &&
+            printf '%s\n' './reads/${fwd_fname}' >> ./jobs7m/jobs7m.txt &&
+            printf '%s\n' './reads/${rev_fname}' >> ./jobs7m/jobs7m.txt &&
+        #end if
 
-        ## ── Run the Python orchestrator (no arguments) ────────────────────────
-        ## kmer_read_m7.py reads jobs7m/jobs7m.txt, calls ./kmerread7,
-        ## and writes results to jobs7m/jobs7m.csv
+        ## ── Run the Python orchestrator ───────────────────────────────────────
         python3 /opt/mitokmer2/kmer_read_m7.py &&
 
         ## ── Copy output CSV to Galaxy output path ─────────────────────────────
@@ -44,48 +61,92 @@
     ]]></command>
 
     <inputs>
-        <!-- Probe database directory selected from Galaxy data table -->
-        <param name="probe_db"
-               type="select"
-               label="Mitochondrial k-mer probe database"
+        <param name="probe_db" type="select" label="Mitochondrial k-mer probe database"
                help="Select a pre-installed mitochondrial k-mer probe database.
                      Databases are managed by your Galaxy administrator via the
                      mitokmer_probe_db data table.">
             <options from_data_table="mitokmer_probe_db">
                 <filter type="sort_by" column="1" />
-                <validator type="no_options"
-                           message="No mitochondrial k-mer probe databases are
-                                    currently installed. Please contact your
-                                    Galaxy administrator." />
+                <validator type="no_options" message="No mitochondrial k-mer probe databases are
+                    currently installed. Please contact your Galaxy administrator." />
             </options>
         </param>
 
-        <param name="reads"
-               type="data_collection"
-               collection_type="list"
-               format="fastq,fastq.gz,fasta,fasta.gz"
-               label="Input reads (FASTQ or FASTA, gzipped or plain)"
-               help="Provide one or more read files for a single sample as a Galaxy
-                     list collection.  Paired-end files (R1 + R2) should both be
-                     included in the same collection.  Light quality trimming of
-                     read ends is performed internally; pre-trimming is optional." />
+        <conditional name="reads">
+            <param name="reads_type" type="select" label="Input read type">
+                <option value="single">Single-end or unpaired reads / FASTA (list collection)</option>
+                <option value="paired">Paired-end reads (paired collection)</option>
+            </param>
+            <when value="single">
+                <param name="input" type="data_collection" collection_type="list"
+                       format="fastqsanger,fastqsanger.gz,fastqillumina,fastqillumina.gz,fasta,fasta.gz"
+                       label="Input reads (FASTQ or FASTA, gzipped or plain)"
+                       help="Provide one or more single-end or unpaired read files as a Galaxy
+                             list collection. For paired-end data, use the 'Paired-end reads'
+                             option instead." />
+            </when>
+            <when value="paired">
+                <param name="input" type="data_collection" collection_type="paired"
+                       format="fastqsanger,fastqsanger.gz,fastqillumina,fastqillumina.gz"
+                       label="Paired-end reads (paired collection)"
+                       help="Provide a Galaxy paired collection containing forward (R1) and
+                             reverse (R2) reads. Light quality trimming of read ends is
+                             performed internally; pre-trimming is optional." />
+            </when>
+        </conditional>
     </inputs>
 
     <outputs>
-        <data name="results_csv"
-              format="csv"
-              label="mitoKmer results for ${on_string}" />
+        <data name="results_csv" format="csv" label="mitoKmer results for ${on_string}" />
     </outputs>
 
     <tests>
+        <!-- Test 1: paired-end FASTQ via paired collection -->
         <test>
             <param name="probe_db" value="mitoch_probes_sample" />
-            <param name="reads">
-                <collection type="list">
-                    <element name="Plodia_R1" value="test/Plodia_R1.fastq.gz" />
-                    <element name="Plodia_R2" value="test/Plodia_R2.fastq.gz" />
-                </collection>
-            </param>
+            <conditional name="reads">
+                <param name="reads_type" value="paired" />
+                <param name="input">
+                    <collection type="paired">
+                        <element name="forward" value="test/Plodia_R1.fastq.gz" ftype="fastqsanger.gz" />
+                        <element name="reverse" value="test/Plodia_R2.fastq.gz" ftype="fastqsanger.gz" />
+                    </collection>
+                </param>
+            </conditional>
+            <output name="results_csv">
+                <assert_contents>
+                    <has_text text="Plodia" />
+                </assert_contents>
+            </output>
+        </test>
+        <!-- Test 2: single-end FASTQ via list collection -->
+        <test>
+            <param name="probe_db" value="mitoch_probes_sample" />
+            <conditional name="reads">
+                <param name="reads_type" value="single" />
+                <param name="input">
+                    <collection type="list">
+                        <element name="Plodia_R1" value="test/Plodia_R1.fastq.gz" ftype="fastqsanger.gz" />
+                    </collection>
+                </param>
+            </conditional>
+            <output name="results_csv">
+                <assert_contents>
+                    <has_text text="Plodia" />
+                </assert_contents>
+            </output>
+        </test>
+        <!-- Test 3: single FASTA via list collection -->
+        <test>
+            <param name="probe_db" value="mitoch_probes_sample" />
+            <conditional name="reads">
+                <param name="reads_type" value="single" />
+                <param name="input">
+                    <collection type="list">
+                        <element name="Plodia_assembly" value="test/Plodia_assembly.fasta" ftype="fasta" />
+                    </collection>
+                </param>
+            </conditional>
             <output name="results_csv">
                 <assert_contents>
                     <has_text text="Plodia" />
@@ -102,30 +163,50 @@ Overview
 --------
 mitoKmer identifies the taxonomic origin of short-read shotgun sequencing data
 by matching reads against a database of species-specific mitochondrial k-mer
-probes.  It reports the relative abundance of taxa at multiple taxonomic ranks
+probes. It reports the relative abundance of taxa at multiple taxonomic ranks
 (e.g. order, species) along with the number of matching reads and supporting
 unique k-mers.
 
 Inputs
 ------
 **Mitochondrial k-mer probe database**
-    Select a pre-installed probe database from the dropdown.  Databases are
+    Select a pre-installed probe database from the dropdown. Databases are
     managed by your Galaxy administrator and registered in the
-    ``mitokmer_probe_db`` data table.  The database consists of a directory
-    of supporting ``.txt`` files.
+    ``mitokmer_probe_db`` data table. The database consists of a directory
+    of ``.txt`` files.
 
-**Input reads**
-    One or more FASTQ or FASTA files (gzipped or plain) for a single sample,
-    supplied as a Galaxy list collection.  Both paired-end files (R1 and R2)
-    should be included in the same collection.
+**Input read type**
+    Choose the input mode that matches your data:
 
-    * Pre-trimming is optional — the tool performs simple window-based quality
-      trimming of read ends internally.
+    *Single-end or unpaired reads / FASTA (list collection)*
+        Provide a Galaxy **list** collection containing one or more FASTQ
+        (``fastqsanger``, ``fastqsanger.gz``) or FASTA (``fasta``,
+        ``fasta.gz``) files. Use this for single-end sequencing data or
+        assembled FASTA sequences.
+
+    *Paired-end reads (paired collection)*
+        Provide a Galaxy **paired** collection where the forward (R1) and
+        reverse (R2) reads are paired together. Both files must be FASTQ
+        format (``fastqsanger`` or ``fastqsanger.gz``).
+
+    In all cases, light window-based quality trimming of read ends is
+    performed internally; pre-trimming is optional.
 
 Output
 ------
 **Results CSV**
-    A comma-separated file with columns: taxid, reads, abundance, uniq.
+    A comma-separated file with one row per taxon detected. Columns:
+
+    =========  ============================================================
+    Column     Description
+    =========  ============================================================
+    Rank       Taxonomic rank (e.g. Order, Species)
+    Taxon      Taxon name
+    Reads      Number of reads matching this taxon
+    Rel_Abund  Relative abundance (%)
+    Unique_kmers  Number of unique k-mers supporting the match
+    =========  ============================================================
+
     Only taxa with non-zero relative abundance are reported.
 
     Example output for the "Plodia" test sample::
