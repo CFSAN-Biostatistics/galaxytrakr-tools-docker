@@ -10,6 +10,7 @@ ARG PYTHON_VER="3.8"
 
 WORKDIR /workspace
 
+
 # Build dependencies: compiler, zlib dev headers, git, Python
 RUN apt-get update && apt-get install -y --no-install-recommends \
     build-essential \
