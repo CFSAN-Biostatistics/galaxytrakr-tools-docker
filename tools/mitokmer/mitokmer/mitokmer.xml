@@ -1,4 +1,4 @@
-<tool id="mitokmer" name="mitoKmer" version="2.0+galaxy0.23" profile="21.05">
+<tool id="mitokmer" name="mitoKmer" version="2.0+galaxy0.24" profile="21.05">
     <description>Identify metagenomic mitochondrial reads by k-mer database matching</description>
     <requirements>
         <container type="docker">quay.io/galaxytrakr/mitokmer:e57a559</container>
@@ -21,7 +21,15 @@
         ln -sf /usr/local/bin/kmerread7 ./kmerread7 &&
 
         ## ── Stage input reads and build jobs file ────────────────────────────
-        #if $reads.reads_type == "single"
+        #if $reads.reads_type == "single_file"
+            mkdir -p ./reads &&
+            #set sample_name = re.sub('[^\w\-_.]', '_', $reads.input.name)
+            #set ext = $fix_ext($reads.input.ext)
+            #set fname = re.sub('[^\w\-_.]', '_', $reads.input.element_identifier) + '.' + $ext
+            ln -sf '$reads.input' './reads/${fname}' &&
+            printf '%s\t1\n' '${sample_name}' > ./jobs7m/jobs7m.txt &&
+            printf '%s\n' './reads/${fname}' >> ./jobs7m/jobs7m.txt &&
+        #else if $reads.reads_type == "single"
             mkdir -p ./reads &&
             #set sample_name = re.sub('[^\w\-_.]', '_', $reads.input.name)
             #set read_count = 0
@@ -74,9 +82,16 @@
 
         <conditional name="reads">
             <param name="reads_type" type="select" label="Input read type">
+                <option value="single_file">Single FASTA or FASTQ dataset</option>
                 <option value="single">Single-end or unpaired reads / FASTA (list collection)</option>
                 <option value="paired">Paired-end reads (paired collection)</option>
             </param>
+            <when value="single_file">
+                <param name="input" type="data"
+                       format="fastqsanger,fastqsanger.gz,fastqillumina,fastqillumina.gz,fasta,fasta.gz"
+                       label="Input FASTA or FASTQ dataset"
+                       help="Provide a single FASTA or FASTQ file from your history." />
+            </when>
             <when value="single">
                 <param name="input" type="data_collection" collection_type="list"
                        format="fastqsanger,fastqsanger.gz,fastqillumina,fastqillumina.gz,fasta,fasta.gz"
@@ -101,7 +116,20 @@
     </outputs>
 
     <tests>
-        <!-- Test 1: paired-end FASTQ via paired collection -->
+        <!-- Test 1: single FASTA dataset -->
+        <test>
+            <param name="probe_db" value="mitoch_probes_sample" />
+            <conditional name="reads">
+                <param name="reads_type" value="single_file" />
+                <param name="input" value="test/Plodia_assembly.fasta" ftype="fasta" />
+            </conditional>
+            <output name="results_csv">
+                <assert_contents>
+                    <has_text text="Plodia" />
+                </assert_contents>
+            </output>
+        </test>
+        <!-- Test 2: paired-end FASTQ via paired collection -->
         <test>
             <param name="probe_db" value="mitoch_probes_sample" />
             <conditional name="reads">
@@ -119,7 +147,7 @@
                 </assert_contents>
             </output>
         </test>
-        <!-- Test 2: single-end FASTQ via list collection -->
+        <!-- Test 3: single-end FASTQ via list collection -->
         <test>
             <param name="probe_db" value="mitoch_probes_sample" />
             <conditional name="reads">
@@ -136,7 +164,7 @@
                 </assert_contents>
             </output>
         </test>
-        <!-- Test 3: single FASTA via list collection -->
+        <!-- Test 4: FASTA list collection -->
         <test>
             <param name="probe_db" value="mitoch_probes_sample" />
             <conditional name="reads">
@@ -178,11 +206,16 @@ Inputs
 **Input read type**
     Choose the input mode that matches your data:
 
+    *Single FASTA or FASTQ dataset*
+        Provide a single FASTA or FASTQ file directly from your history.
+        This is the simplest option for a single assembled sequence or
+        single-end read file.
+
     *Single-end or unpaired reads / FASTA (list collection)*
         Provide a Galaxy **list** collection containing one or more FASTQ
         (``fastqsanger``, ``fastqsanger.gz``) or FASTA (``fasta``,
         ``fasta.gz``) files. Use this for single-end sequencing data or
-        assembled FASTA sequences.
+        multiple assembled FASTA sequences processed together.
 
     *Paired-end reads (paired collection)*
         Provide a Galaxy **paired** collection where the forward (R1) and
