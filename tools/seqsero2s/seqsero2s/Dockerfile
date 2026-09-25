@@ -50,9 +50,12 @@ RUN mamba create -n seqsero2s -c conda-forge -c bioconda \
     bwa>=0.7 \
     seqtk>=1.3 \
     stringmlst>=0.6 \
-    mlst>=2.32 \
     perl-list-moreutils \
+    && mamba create -n mlst_env -c conda-forge -c bioconda \
+    mlst>=2.32 \
     && mamba clean -afy
+
+
 
 # Install SeqSero2S from local fork
 WORKDIR /tmp/build/SeqSero2S
@@ -88,7 +91,7 @@ RUN echo "Running SeqSero2S tests..." && \
     echo "blastn -help: PASSED" && \
     /opt/conda/envs/seqsero2s/bin/SalmID.py -h && \
     echo "SalmID.py -h: PASSED" && \
-    /opt/conda/envs/seqsero2s/bin/mlst -h && \
+    /opt/conda/envs/mlst_env/bin/mlst -h && \
     echo "mlst -h: PASSED" && \
     echo "All tests completed successfully!"
 
@@ -102,9 +105,10 @@ FROM condaforge/mambaforge:latest AS dist
 
 # Copy conda environment from builder
 COPY --from=builder /opt/conda/envs/seqsero2s /opt/conda/envs/seqsero2s
+COPY --from=builder /opt/conda/envs/mlst_env /opt/conda/envs/mlst_env
 
 # Update PATH to use the conda environment
-ENV PATH=/opt/conda/envs/seqsero2s/bin:$PATH \
+ENV PATH=/opt/conda/envs/mlst_env/bin:/opt/conda/envs/seqsero2s/bin:$PATH \
     CONDA_DEFAULT_ENV=seqsero2s \
     CONDA_PREFIX=/opt/conda/envs/seqsero2s
 
