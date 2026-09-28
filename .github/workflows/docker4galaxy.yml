@@ -93,8 +93,13 @@ jobs:
             IMAGE_NAME="quay.io/galaxytrakr/${TOOL_NAME}"
             FULL_IMAGE_TAG="${IMAGE_NAME}:${VERSION_TAG}"
             
-            echo "Building and pushing image: ${FULL_IMAGE_TAG}"
+            echo "Building image: ${FULL_IMAGE_TAG}"
             docker build -t "${FULL_IMAGE_TAG}" -f "${DOCKERFILE_PATH}" "${BUILD_CONTEXT}"
+
+            echo "Verifying conda/mamba-resolved dependency versions in ${FULL_IMAGE_TAG}..."
+            .github/scripts/verify-conda-versions.sh "${FULL_IMAGE_TAG}" "${DOCKERFILE_PATH}"
+
+            echo "Pushing image: ${FULL_IMAGE_TAG}"
             docker push "${FULL_IMAGE_TAG}"
 
             # --- D. Patch XML ---
